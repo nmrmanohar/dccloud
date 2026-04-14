@@ -888,48 +888,111 @@ window.deleteTrainer = async function(id) {
 // ═══════════════════════════════════════════════════════════════════════
 function showSettings() {
   const s = storage.settings;
+  const roMode = storage.isReadOnly;
+
   document.getElementById('content').innerHTML = `
     <div class="settings-wrap">
-      <div class="settings-card">
-        <h2>Settings – GitHub Data Connection</h2>
-        <p>Your invoice data is stored as JSON files in a GitHub repository you control.
-           Enter the details below once; they are saved in your browser only.</p>
 
-        <h3>GitHub Personal Access Token (PAT)</h3>
+      ${roMode ? `<div style="background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:12px 16px;margin-bottom:16px;font-size:13px">
+        <strong>👁 View-only mode</strong> — you are using the shared read-only token.
+        Enter your personal write token below to enable editing.
+      </div>` : ''}
+
+      <!-- OWNER SECTION -->
+      <div class="settings-card" style="margin-bottom:16px">
+        <h2>Owner Login</h2>
+        <p>Your write token is saved in <em>this browser only</em>. Enter it once per device.</p>
+
+        <h3>Personal Access Token (write access)</h3>
         <div class="form-group">
-          <label>Token <span style="color:#999;font-size:11px">(needs <code>repo</code> scope for private repos)</span></label>
-          <input type="password" id="s-token" value="${esc(s.token||'')}" placeholder="ghp_xxxxxxxxx" autocomplete="off" />
+          <label>Token <span style="color:#999;font-size:11px">(classic PAT with <code>repo</code> scope)</span></label>
+          <input type="password" id="s-token" value="${roMode ? '' : esc(s.token||'')}"
+            placeholder="ghp_xxxxxxxxx" autocomplete="off" />
         </div>
 
         <h3>Data Repository</h3>
         <div class="form-group">
-          <label>Owner (GitHub username or org)</label>
+          <label>Owner (GitHub username)</label>
           <input type="text" id="s-owner" value="${esc(s.dataOwner||'nmrmanohar')}" />
         </div>
         <div class="form-group">
-          <label>Repository name <span style="color:#999;font-size:11px">(can be private)</span></label>
+          <label>Repository name</label>
           <input type="text" id="s-repo" value="${esc(s.dataRepo||'dccloud-data')}" />
         </div>
 
-        <div style="display:flex;gap:10px;margin-top:24px;flex-wrap:wrap">
+        <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;align-items:center">
           <button class="btn btn-primary" onclick="testAndSave()">Test &amp; Save</button>
           <button class="btn" onclick="initRepo()">Initialize Data Files</button>
+          ${!roMode && s.token ? `<button class="btn btn-danger" onclick="doLogout()" style="margin-left:auto">Logout</button>` : ''}
         </div>
         <div id="s-status" style="margin-top:14px;font-size:13px"></div>
+      </div>
 
-        <h3>Auditor Read-Only Access</h3>
-        <p>To give your auditor read-only access, create a <strong>fine-grained PAT</strong> on GitHub with
-           <em>Contents: Read-only</em> permission scoped to your data repo, and share just that token.
-           They enter it here on their browser.</p>
+      <!-- AUDITOR SECTION -->
+      <div class="settings-card" style="margin-bottom:16px">
+        <h2>Auditor Access Setup</h2>
+        <p>Set a <strong>read-only token</strong> once — it is saved to <code>config.json</code> in the
+           public app repo so <strong>any browser that opens the app gets it automatically</strong>.
+           Your auditor just opens the URL, no PAT entry needed.</p>
 
-        <h3>About</h3>
+        <h3>Step 1 — Create a read-only PAT on GitHub</h3>
+        <p>GitHub → Settings → Developer settings → Fine-grained tokens → Generate new token<br/>
+           • Repository access: <em>Only select repositories</em> → pick <strong>dccloud-data</strong><br/>
+           • Permissions → Contents: <strong>Read-only</strong><br/>
+           • Copy the token (starts with <code>github_pat_</code>)</p>
+
+        <h3>Step 2 — Save it here (requires your write token to be active above)</h3>
+        <div class="form-group">
+          <label>Read-Only Token for Auditors</label>
+          <input type="password" id="s-readtoken" placeholder="github_pat_xxxxxxxxx" autocomplete="off" />
+        </div>
+        <div style="display:flex;gap:10px;margin-top:16px">
+          <button class="btn btn-primary" onclick="saveAuditorConfig()">Save Auditor Config</button>
+        </div>
+        <div id="s-auditor-status" style="margin-top:14px;font-size:13px"></div>
+        <p style="margin-top:12px;color:#888;font-size:12px">
+          The read-only token is stored in <code>config.json</code> in the public GitHub Pages repo.
+          It only allows reading your invoice data — no writes possible with it.
+        </p>
+      </div>
+
+      <!-- ABOUT -->
+      <div class="settings-card">
+        <h2>About</h2>
         <p>
-          App hosted at: <span class="code">https://nmrmanohar.github.io/dccloud</span><br/>
+          App URL: <span class="code">https://nmrmanohar.github.io/dccloud</span><br/>
           Built for: <strong>DC Cloud – Nallapareddy Manohar Reddy</strong>
         </p>
       </div>
+
     </div>`;
 }
+
+window.doLogout = function() {
+  storage.logout();
+  Object.keys(cache).forEach(k => cache[k] = null);
+  toast('Logged out');
+  setTimeout(() => location.reload(), 800);
+};
+
+window.saveAuditorConfig = async function() {
+  const status = document.getElementById('s-auditor-status');
+  const readToken = document.getElementById('s-readtoken')?.value.trim();
+  if (!readToken) { status.innerHTML = '<span style="color:red">Enter a read-only token first.</span>'; return; }
+  if (storage.isReadOnly) { status.innerHTML = '<span style="color:red">You need your write token active to save auditor config.</span>'; return; }
+  status.textContent = 'Saving config.json to app repo…';
+  try {
+    const cfg = {
+      dataOwner: storage.settings.dataOwner,
+      dataRepo:  storage.settings.dataRepo,
+      readToken
+    };
+    await storage.saveRemoteConfig(cfg);
+    status.innerHTML = '<span style="color:green">✓ Saved. Auditors can now open the app URL without any setup.</span>';
+  } catch (e) {
+    status.innerHTML = `<span style="color:red">✗ ${esc(e.message)}</span>`;
+  }
+};
 
 window.testAndSave = async function() {
   const token = document.getElementById('s-token').value.trim();
@@ -1290,4 +1353,16 @@ async function runImport(entity, rows) {
 // ═══════════════════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════════════════
-window.addEventListener('DOMContentLoaded', route);
+window.addEventListener('DOMContentLoaded', async () => {
+  // Load remote config.json first (sets up readToken / dataRepo auto-config)
+  await storage.loadRemoteConfig();
+
+  // Show read-only badge in top bar if using shared auditor token
+  if (storage.isReadOnly) {
+    const right = document.querySelector('.top-bar-right');
+    right.insertAdjacentHTML('afterbegin',
+      '<span class="env-badge" style="background:rgba(255,200,0,.25);border-color:rgba(255,200,0,.6);margin-right:8px">👁 View Only</span>');
+  }
+
+  route();
+});
