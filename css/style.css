@@ -240,6 +240,14 @@ input:disabled { background: #f5f5f8; color: var(--text-light); cursor: not-allo
 /* ── Modal ── */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 9998; }
 .modal { background: var(--white); border-radius: 8px; padding: 24px; min-width: 300px; max-width: 440px; box-shadow: 0 8px 32px rgba(0,0,0,.18); }
+.modal.modal-lg { max-width: 820px; width: 95vw; padding: 24px 28px; }
+.gst-stats { display:flex; gap:0; border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-bottom:16px; }
+.gst-stat { flex:1; padding:12px 16px; text-align:center; border-right:1px solid var(--border); background:#fafafe; }
+.gst-stat:last-child { border-right:none; }
+.gst-stat .val { font-size:17px; font-weight:700; color:var(--purple-dark); }
+.gst-stat .lbl { font-size:11px; color:var(--text-light); margin-top:2px; }
+.gst-stat.highlight .val { color:var(--success); }
+.gst-stat.warn .val { color:var(--warning); }
 .modal-title { font-size: 15px; font-weight: 600; margin-bottom: 10px; }
 .modal-body  { color: var(--text-light); margin-bottom: 20px; font-size: 13px; line-height: 1.5; }
 .modal-footer { display: flex; gap: 8px; justify-content: flex-end; }

@@ -63,6 +63,18 @@
   <!-- Toast -->
   <div class="toast" id="toast"></div>
 
+  <!-- GST Summary modal -->
+  <div class="modal-overlay" id="gstOverlay" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+    <div class="modal modal-lg">
+      <div class="modal-title" id="gstTitle">GST Summary</div>
+      <div id="gstBody" style="max-height:65vh;overflow-y:auto"></div>
+      <div class="modal-footer">
+        <button class="btn" onclick="exportGSTCSV()">⬇ Export CSV</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('gstOverlay').style.display='none'">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Confirm modal -->
   <div class="modal-overlay" id="modalOverlay" style="display:none">
     <div class="modal">

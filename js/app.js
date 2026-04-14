@@ -130,6 +130,14 @@ async function showTrainingsList() {
 
   if (_fyYear === 'current') {
     rows = rows.filter(t => inCurrentFY(t.invoice_date));
+  } else if (_fyYear === 'prev') {
+    const yr = currentFYRange().start.getFullYear() - 1;
+    const s = new Date(yr, 3, 1), e = new Date(yr + 1, 2, 31, 23, 59, 59);
+    rows = rows.filter(t => {
+      if (!t.invoice_date) return false;
+      const d = new Date(t.invoice_date + 'T00:00:00');
+      return d >= s && d <= e;
+    });
   } else if (_fyYear !== 'all') {
     const yr = parseInt(_fyYear);
     const s = new Date(yr, 3, 1), e = new Date(yr + 1, 2, 31, 23, 59, 59);
@@ -155,12 +163,16 @@ async function showTrainingsList() {
   const totGST      = rows.reduce((s, t) => s + (+t.gst_amount       || 0), 0);
   const totTrainer  = rows.reduce((s, t) => s + (+t.total_trainer_fee|| 0), 0);
 
-  const fyLabel = _fyYear === 'all' ? 'All Trainings'
+  const fyLabel = _fyYear === 'all'     ? 'All Trainings'
     : _fyYear === 'current' ? fy.label
+    : _fyYear === 'prev'    ? `Previous FY (${prevFYStart}-${String(prevFYStart+1).slice(2)}) Trainings`
     : `FY ${_fyYear}-${String(parseInt(_fyYear)+1).slice(2)} Trainings`;
 
+  const curFYStart  = currentFYRange().start;
+  const prevFYStart = curFYStart.getFullYear() - 1;
   const fySelectOpts = `
     <option value="current" ${_fyYear==='current'?'selected':''}>This FY</option>
+    <option value="prev"    ${_fyYear==='prev'   ?'selected':''}>Previous FY (${prevFYStart}-${String(prevFYStart+1).slice(2)})</option>
     ${fyYears.map(y => `<option value="${y}" ${_fyYear==y?'selected':''}>${y}-${String(y+1).slice(2)}</option>`).join('')}
     <option value="all" ${_fyYear==='all'?'selected':''}>All Years</option>`;
 
@@ -172,6 +184,8 @@ async function showTrainingsList() {
       <div class="toolbar-sep"></div>
       <button class="btn" onclick="exportTrainings()">⬇ Export CSV</button>
       <button class="btn" onclick="triggerImport('trainings')">⬆ Import Excel</button>
+      <div class="toolbar-sep"></div>
+      <button class="btn" onclick="showGSTLastMonth()">GST Last Month</button>
     </div>
 
     <div class="filter-bar">
@@ -948,6 +962,117 @@ window.initRepo = async function() {
   } catch (e) {
     status.innerHTML = `<span style="color:red">✗ ${esc(e.message)}</span>`;
   }
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// GST LAST MONTH
+// ═══════════════════════════════════════════════════════════════════════
+let _gstRecords = []; // kept for CSV export
+
+window.showGSTLastMonth = async function() {
+  await loadEntity('trainings');
+  await loadEntity('vendors');
+
+  const now       = new Date();
+  const y         = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+  const m         = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+  const mStart    = new Date(y, m, 1);
+  const mEnd      = new Date(y, m + 1, 0, 23, 59, 59);
+  const monthLabel = mStart.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
+  // INR invoices with GST in the last calendar month, filtered by invoice date
+  _gstRecords = cache.trainings.filter(t => {
+    if (!t.invoice_date || t.currency !== 'INR' || t.gst_required !== 'Yes') return false;
+    const d = new Date(t.invoice_date + 'T00:00:00');
+    return d >= mStart && d <= mEnd;
+  }).sort((a, b) => (a.invoice_date || '').localeCompare(b.invoice_date || ''));
+
+  const totTaxable = _gstRecords.reduce((s, t) => s + (+t.taxable_amount || ((+t.invoice_value || 0) / 1.18)), 0);
+  const totGST     = _gstRecords.reduce((s, t) => s + (+t.gst_amount || 0), 0);
+  const credited   = _gstRecords.filter(t => t.gst_credited === 'Yes').reduce((s, t) => s + (+t.gst_amount || 0), 0);
+  const pending    = totGST - credited;
+
+  const rows = _gstRecords.length === 0
+    ? `<div class="empty-state" style="padding:32px"><h3>No GST records</h3>
+        <p>No INR invoices with GST Required = Yes found for ${monthLabel}.</p></div>`
+    : `<table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:#f7f7f9;border-bottom:2px solid #e0e0e0">
+          <th style="padding:8px 10px;text-align:left">Invoice No.</th>
+          <th style="padding:8px 10px;text-align:left">Invoice Date</th>
+          <th style="padding:8px 10px;text-align:left">Vendor</th>
+          <th style="padding:8px 10px;text-align:left">Course</th>
+          <th style="padding:8px 10px;text-align:right">Taxable Amt</th>
+          <th style="padding:8px 10px;text-align:right">GST (18%)</th>
+          <th style="padding:8px 10px;text-align:right">Invoice Value</th>
+          <th style="padding:8px 10px;text-align:center">GST Credited?</th>
+        </tr></thead>
+        <tbody>
+          ${_gstRecords.map(t => {
+            const taxable = (+t.taxable_amount) || ((+t.invoice_value || 0) / 1.18);
+            return `<tr style="border-bottom:1px solid #eee">
+              <td style="padding:7px 10px">${esc(t.invoice_number)}</td>
+              <td style="padding:7px 10px">${fmtDate(t.invoice_date)}</td>
+              <td style="padding:7px 10px">${esc(vendorName(t.vendor_id))}</td>
+              <td style="padding:7px 10px">${esc(t.course_name)}</td>
+              <td style="padding:7px 10px;text-align:right;font-family:monospace">${fmtINR(taxable)}</td>
+              <td style="padding:7px 10px;text-align:right;font-family:monospace;color:#5c2d91;font-weight:600">${fmtINR(t.gst_amount)}</td>
+              <td style="padding:7px 10px;text-align:right;font-family:monospace">${fmtINR(t.invoice_value)}</td>
+              <td style="padding:7px 10px;text-align:center">
+                <span class="badge ${t.gst_credited==='Yes'?'badge-paid':t.gst_credited==='No'?'badge-not-paid':'badge-partial'}">
+                  ${esc(t.gst_credited || 'NA')}
+                </span>
+              </td>
+            </tr>`;
+          }).join('')}
+          <tr style="background:#f7f7f9;font-weight:700;border-top:2px solid #e0e0e0">
+            <td colspan="4" style="padding:8px 10px">Total</td>
+            <td style="padding:8px 10px;text-align:right;font-family:monospace">${fmtINR(totTaxable)}</td>
+            <td style="padding:8px 10px;text-align:right;font-family:monospace;color:#5c2d91">${fmtINR(totGST)}</td>
+            <td colspan="2" style="padding:8px 10px"></td>
+          </tr>
+        </tbody>
+      </table>`;
+
+  document.getElementById('gstTitle').textContent = `GST Summary – ${monthLabel}`;
+  document.getElementById('gstBody').innerHTML = `
+    <div class="gst-stats">
+      <div class="gst-stat">
+        <div class="val">${_gstRecords.length}</div>
+        <div class="lbl">Invoices</div>
+      </div>
+      <div class="gst-stat">
+        <div class="val">${fmtINR(totTaxable)}</div>
+        <div class="lbl">Taxable Amount</div>
+      </div>
+      <div class="gst-stat">
+        <div class="val">${fmtINR(totGST)}</div>
+        <div class="lbl">Total GST (18%)</div>
+      </div>
+      <div class="gst-stat highlight">
+        <div class="val">${fmtINR(credited)}</div>
+        <div class="lbl">GST Credited</div>
+      </div>
+      <div class="gst-stat warn">
+        <div class="val">${fmtINR(pending)}</div>
+        <div class="lbl">Pending Credit</div>
+      </div>
+    </div>
+    ${rows}`;
+
+  document.getElementById('gstOverlay').style.display = 'flex';
+};
+
+window.exportGSTCSV = function() {
+  if (!_gstRecords.length) return;
+  const headers = ['Invoice No','Invoice Date','Vendor','Course','Taxable Amount','GST Amount','Invoice Value','GST Credited'];
+  const data = _gstRecords.map(t => [
+    t.invoice_number, t.invoice_date, vendorName(t.vendor_id), t.course_name,
+    t.taxable_amount || ((+t.invoice_value||0)/1.18).toFixed(2),
+    t.gst_amount, t.invoice_value, t.gst_credited
+  ]);
+  const now = new Date();
+  const mon = `${now.getFullYear()}-${String(now.getMonth()).padStart(2,'0')}`;
+  downloadCSV([headers, ...data], `gst-summary-${mon}.csv`);
 };
 
 // ═══════════════════════════════════════════════════════════════════════
