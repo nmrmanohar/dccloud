@@ -258,6 +258,85 @@ input:disabled { background: #f5f5f8; color: var(--text-light); cursor: not-allo
 .spinner { width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--purple); border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── User pill (top bar) ── */
+.user-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25);
+  border-radius: 20px; padding: 3px 12px 3px 8px;
+  font-size: 12px; color: #fff; margin-right: 8px; cursor: default;
+}
+.user-pill .avatar {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--purple-light); display: inline-flex;
+  align-items: center; justify-content: center; font-size: 11px; font-weight: 700;
+}
+.role-tag {
+  font-size: 10px; background: rgba(255,255,255,.2);
+  border-radius: 8px; padding: 1px 6px; letter-spacing: .3px; text-transform: uppercase;
+}
+
+/* ── Login / Auth shell ── */
+.auth-bg {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #1e1633 0%, #3d1f6e 60%, #5c2d91 100%);
+  padding: 20px;
+}
+.auth-card {
+  background: var(--white); border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(0,0,0,.35);
+  width: 100%; max-width: 420px; overflow: hidden;
+}
+.auth-header {
+  background: linear-gradient(135deg, #1e1633, #5c2d91);
+  padding: 32px 32px 24px; text-align: center; color: #fff;
+}
+.auth-header .cloud { font-size: 44px; line-height: 1; }
+.auth-header h1 { font-size: 22px; font-weight: 700; margin: 8px 0 2px; }
+.auth-header p  { font-size: 13px; opacity: .7; }
+.auth-body { padding: 28px 32px 32px; }
+.auth-body h2 { font-size: 16px; color: var(--purple-dark); margin-bottom: 18px; }
+.auth-footer { text-align: center; padding: 0 32px 24px; font-size: 12px; color: var(--text-light); }
+
+/* ── Setup wizard steps ── */
+.setup-steps { display: flex; gap: 0; margin-bottom: 24px; }
+.setup-step {
+  flex: 1; text-align: center; padding: 8px 4px;
+  font-size: 11px; color: var(--text-light); border-bottom: 2px solid var(--border);
+  position: relative;
+}
+.setup-step.active { color: var(--purple); border-bottom-color: var(--purple); font-weight: 600; }
+.setup-step.done   { color: var(--success); border-bottom-color: var(--success); }
+
+/* ── User management table ── */
+.role-badge {
+  display: inline-block; padding: 2px 10px; border-radius: 10px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px;
+}
+.role-admin  { background: #ede7f6; color: #4a148c; }
+.role-editor { background: #e3f2fd; color: #0d47a1; }
+.role-viewer { background: #f1f8e9; color: #33691e; }
+.status-active   { color: var(--success); font-weight: 600; font-size: 12px; }
+.status-inactive { color: var(--danger);  font-weight: 600; font-size: 12px; }
+
+/* ── Auth extras ── */
+.logo-icon-lg { font-size: 44px; line-height: 1; }
+.auth-title   { font-size: 22px; font-weight: 700; margin: 8px 0 2px; }
+.auth-subtitle { font-size: 13px; opacity: .7; }
+.auth-error {
+  background: #fdf2f2; color: var(--danger);
+  border: 1px solid #fca5a5; border-radius: 6px;
+  padding: 10px 14px; font-size: 13px; margin-bottom: 12px;
+}
+.btn-full { width: 100%; justify-content: center; }
+.field-hint { font-size: 11px; color: var(--text-light); margin-top: 4px; line-height: 1.4; }
+.setup-info { font-size: 13px; color: #555; margin-bottom: 20px; line-height: 1.6; }
+.setup-card { max-width: 480px !important; }
+.checkbox-label {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--text); cursor: pointer;
+}
+.checkbox-label input[type=checkbox] { cursor: pointer; }
+
 /* ── Responsive ── */
 @media (max-width: 900px) {
   .form-body { grid-template-columns: 1fr 1fr; }

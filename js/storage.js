@@ -1,20 +1,20 @@
 /**
- * storage.js – GitHub API wrapper for reading/writing JSON data files
- * Data repo: {dataOwner}/{dataRepo}  (can be a private repo)
- * Files:  data/trainings.json | data/vendors.json | data/trainers.json
+ * storage.js – GitHub API wrapper
  *
- * Auth strategy:
- *  1. On startup, fetch config.json from the public app repo (no auth needed).
- *     config.json contains: dataOwner, dataRepo, readToken (read-only PAT).
- *  2. If the user has stored their own write token in localStorage, use that
- *     (full read/write access — owner mode).
- *  3. Otherwise fall back to readToken from config.json (read-only mode — auditor).
- *  4. If neither exists, show Settings for manual PAT entry.
+ * Token priority (highest → lowest):
+ *   1. auth.token  (from active user session — set after login)
+ *   2. this.settings.token  (legacy fallback, kept for Settings page first-time setup)
+ *
+ * config.json (in the public app repo) holds:
+ *   { dataOwner, dataRepo, readToken, users[] }
+ *
+ * config.json is fetched on every load so the app works in any browser
+ * without per-browser PAT entry.
  */
 class GitHubStorage {
   constructor() {
-    this.settings  = this._load();
-    this._readOnly = false;   // true when using the shared read-only token
+    this.settings    = this._load();
+    this._remoteConfig = null;
   }
 
   _load() {
@@ -22,81 +22,42 @@ class GitHubStorage {
     catch { return {}; }
   }
 
+  /** Persist connection settings (used only during first-time setup) */
   saveSettings(s) {
     localStorage.setItem('dccloud_cfg', JSON.stringify(s));
-    this.settings  = s;
-    this._readOnly = false;  // explicit save = owner mode
+    this.settings = s;
   }
 
-  logout() {
-    const s = { ...this.settings };
-    delete s.token;
-    localStorage.setItem('dccloud_cfg', JSON.stringify(s));
-    this.settings  = s;
-    this._readOnly = false;
-  }
-
-  get isConfigured() {
-    const { token, dataOwner, dataRepo } = this.settings;
-    return !!(token && dataOwner && dataRepo);
-  }
-
-  get isReadOnly() { return this._readOnly; }
-
-  // ── Remote config (config.json in public app repo) ──────────────────
-  /**
-   * Fetch config.json from the public GitHub Pages repo.
-   * Silently ignored if the file doesn't exist yet.
-   * Populates dataOwner/dataRepo from config if not already in localStorage.
-   * If no write token in localStorage, uses readToken from config (read-only mode).
-   */
+  // ── Remote config (config.json in the public app repo) ───────────────
   async loadRemoteConfig() {
     try {
-      // Use the Pages URL base — works both locally and on GitHub Pages
       const base = location.origin + location.pathname.replace(/\/[^/]*$/, '/');
       const resp = await fetch(`${base}config.json?t=${Date.now()}`);
       if (!resp.ok) return;
-      const cfg = await resp.json();
-
-      // Merge data repo settings (localStorage values take priority)
-      if (!this.settings.dataOwner && cfg.dataOwner) this.settings.dataOwner = cfg.dataOwner;
-      if (!this.settings.dataRepo   && cfg.dataRepo)  this.settings.dataRepo  = cfg.dataRepo;
-
-      // If owner has a write token stored, use that — don't touch it
-      if (this.settings.token) return;
-
-      // No write token → use readToken as read-only fallback
-      if (cfg.readToken) {
-        this.settings.token = cfg.readToken;
-        this._readOnly = true;
-      }
-    } catch { /* network issues, file missing — silently continue */ }
+      this._remoteConfig = await resp.json();
+      // Pre-fill local settings from config so the API URLs are correct
+      if (this._remoteConfig.dataOwner) this.settings.dataOwner = this._remoteConfig.dataOwner;
+      if (this._remoteConfig.dataRepo)  this.settings.dataRepo  = this._remoteConfig.dataRepo;
+    } catch { /* config.json not yet created — first-time setup */ }
   }
 
-  /**
-   * Save config.json to the public app repo (nmrmanohar/dccloud).
-   * Requires write access to the app repo (owner's full PAT).
-   */
-  async saveRemoteConfig(cfg) {
-    const { token, dataOwner } = this.settings;
-    const appOwner = dataOwner || 'nmrmanohar';
-    const url = `https://api.github.com/repos/${appOwner}/dccloud/contents/config.json`;
-    const hdrs = { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' };
-    const get = await fetch(url, { headers: hdrs });
-    const sha = get.ok ? (await get.json()).sha : null;
-    const body = {
-      message: 'Update app config',
-      content: btoa(unescape(encodeURIComponent(JSON.stringify(cfg, null, 2)))),
-      ...(sha ? { sha } : {})
-    };
-    const put = await fetch(url, { method: 'PUT', headers: hdrs, body: JSON.stringify(body) });
-    if (!put.ok) { const e = await put.json().catch(() => ({})); throw new Error(e.message || `HTTP ${put.status}`); }
+  get remoteConfig() { return this._remoteConfig || {}; }
+  get configUsers()  { return this._remoteConfig?.users  || []; }
+  get readToken()    { return this._remoteConfig?.readToken || null; }
+
+  get isConfigured() {
+    return !!(this.settings.dataOwner && this.settings.dataRepo &&
+              (auth.token || this.settings.token));
   }
 
-  // ── Internal helpers ─────────────────────────────────────────────────
+  // ── Internal helpers ──────────────────────────────────────────────────
+  _token() {
+    return auth.isLoggedIn ? auth.token : this.settings.token;
+  }
+
   _headers() {
     return {
-      'Authorization': `token ${this.settings.token}`,
+      'Authorization': `token ${this._token()}`,
       'Accept': 'application/vnd.github.v3+json',
       'Content-Type': 'application/json'
     };
@@ -142,14 +103,14 @@ class GitHubStorage {
     return resp.json();
   }
 
-  // ── Public data API ──────────────────────────────────────────────────
+  // ── Data API ──────────────────────────────────────────────────────────
   async getAll(entity) {
     const result = await this._get(`data/${entity}.json`);
     return result ? result.data : [];
   }
 
   async saveAll(entity, records, message) {
-    if (this._readOnly) throw new Error('Read-only mode — cannot save.');
+    if (!auth.canWrite) throw new Error('You do not have permission to save.');
     const path = `data/${entity}.json`;
     const existing = await this._get(path);
     await this._put(path, records, existing?.sha || null, message || `Update ${entity}`);
@@ -167,6 +128,29 @@ class GitHubStorage {
     const resp = await fetch('https://api.github.com/user', { headers: this._headers() });
     if (!resp.ok) throw new Error('Invalid token or no network access');
     return (await resp.json()).login;
+  }
+
+  // ── Save config.json to the public app repo ───────────────────────────
+  /** Writes config.json to nmrmanohar/dccloud (the Pages repo) */
+  async saveRemoteConfig(cfg) {
+    const owner = this.settings.dataOwner || 'nmrmanohar';
+    const url   = `https://api.github.com/repos/${owner}/dccloud/contents/config.json`;
+    const hdrs  = { 'Authorization': `token ${this._token()}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' };
+    const get   = await fetch(url, { headers: hdrs });
+    const sha   = get.ok ? (await get.json()).sha : null;
+    const put   = await fetch(url, {
+      method: 'PUT', headers: hdrs,
+      body: JSON.stringify({
+        message: 'Update app config',
+        content: this._encode(cfg),
+        ...(sha ? { sha } : {})
+      })
+    });
+    if (!put.ok) {
+      const e = await put.json().catch(() => ({}));
+      throw new Error(e.message || `HTTP ${put.status}`);
+    }
+    this._remoteConfig = cfg;
   }
 }
 

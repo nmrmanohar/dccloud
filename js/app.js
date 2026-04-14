@@ -31,13 +31,39 @@ window.addEventListener('hashchange', route);
 window.navigate = navigate;
 window.toggleSidebar = toggleSidebar;
 
-async function route() {
-  const { entity, action, id } = parseRoute();
+function showAppShell() {
+  document.getElementById('auth-shell').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  // Show/hide admin nav
+  document.getElementById('nav-admin').style.display = auth.isAdmin ? 'block' : 'none';
+  // Update user pill
+  const pill = document.getElementById('userPill');
+  const initials = (auth.displayName || auth.currentUser?.username || '?')
+    .split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+  const roleColors = { admin: '#7c3aed', editor: '#1d4ed8', viewer: '#15803d' };
+  pill.innerHTML = `
+    <span class="avatar" style="background:${roleColors[auth.role]||'#666'}">${esc(initials)}</span>
+    ${esc(auth.displayName || auth.currentUser?.username)}
+    <span class="role-tag">${esc(auth.role)}</span>`;
+}
 
-  if (!storage.isConfigured && entity !== 'settings') {
-    navigate('settings');
+function showAuthShell(html) {
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('auth-shell').style.display = 'block';
+  document.getElementById('auth-content').innerHTML = html;
+}
+
+async function route() {
+  // Auth guard — must be logged in to use the app
+  if (!auth.isLoggedIn) {
+    const users = storage.configUsers;
+    if (!users || users.length === 0) showFirstTimeSetup();
+    else showLoginPage();
     return;
   }
+
+  showAppShell();
+  const { entity, action, id } = parseRoute();
 
   // Highlight active nav
   document.querySelectorAll('.nav-item').forEach(el => {
@@ -49,17 +75,20 @@ async function route() {
 
   try {
     if (entity === 'trainings') {
-      if (action === 'new')  await showTrainingForm(null);
-      else if (action === 'edit' && id) await showTrainingForm(id);
-      else await showTrainingsList();
+      if (action === 'new')       await showTrainingForm(null);
+      else if (action === 'edit') await showTrainingForm(id);
+      else                        await showTrainingsList();
     } else if (entity === 'vendors') {
-      if (action === 'new')  await showVendorForm(null);
-      else if (action === 'edit' && id) await showVendorForm(id);
-      else await showVendorsList();
+      if (action === 'new')       await showVendorForm(null);
+      else if (action === 'edit') await showVendorForm(id);
+      else                        await showVendorsList();
     } else if (entity === 'trainers') {
-      if (action === 'new')  await showTrainerForm(null);
-      else if (action === 'edit' && id) await showTrainerForm(id);
-      else await showTrainersList();
+      if (action === 'new')       await showTrainerForm(null);
+      else if (action === 'edit') await showTrainerForm(id);
+      else                        await showTrainersList();
+    } else if (entity === 'users') {
+      if (!auth.isAdmin) { navigate('trainings'); return; }
+      showUserManagement();
     } else if (entity === 'settings') {
       showSettings();
     } else {
@@ -180,10 +209,10 @@ async function showTrainingsList() {
   content.innerHTML = `
     <div class="toolbar">
       <span class="toolbar-title">${esc(fyLabel)}</span>
-      <button class="btn btn-primary" onclick="navigate('trainings/new')">+ New</button>
+      ${auth.canWrite ? `<button class="btn btn-primary" onclick="navigate('trainings/new')">+ New</button>` : ''}
       <div class="toolbar-sep"></div>
       <button class="btn" onclick="exportTrainings()">⬇ Export CSV</button>
-      <button class="btn" onclick="triggerImport('trainings')">⬆ Import Excel</button>
+      ${auth.canWrite ? `<button class="btn" onclick="triggerImport('trainings')">⬆ Import Excel</button>` : ''}
       <div class="toolbar-sep"></div>
       <button class="btn" onclick="showGSTLastMonth()">GST Last Month</button>
     </div>
@@ -594,9 +623,8 @@ async function showVendorsList() {
   document.getElementById('content').innerHTML = `
     <div class="toolbar">
       <span class="toolbar-title">Accounts</span>
-      <button class="btn btn-primary" onclick="navigate('vendors/new')">+ New Account</button>
-      <div class="toolbar-sep"></div>
-      <button class="btn" onclick="triggerImport('vendors')">⬆ Import Excel</button>
+      ${auth.canWrite ? `<button class="btn btn-primary" onclick="navigate('vendors/new')">+ New Account</button>` : ''}
+      ${auth.canWrite ? `<div class="toolbar-sep"></div><button class="btn" onclick="triggerImport('vendors')">⬆ Import Excel</button>` : ''}
     </div>
     <div class="table-container">
       ${rows.length === 0
@@ -744,9 +772,8 @@ async function showTrainersList() {
   document.getElementById('content').innerHTML = `
     <div class="toolbar">
       <span class="toolbar-title">Trainers</span>
-      <button class="btn btn-primary" onclick="navigate('trainers/new')">+ New Trainer</button>
-      <div class="toolbar-sep"></div>
-      <button class="btn" onclick="triggerImport('trainers')">⬆ Import Excel</button>
+      ${auth.canWrite ? `<button class="btn btn-primary" onclick="navigate('trainers/new')">+ New Trainer</button>` : ''}
+      ${auth.canWrite ? `<div class="toolbar-sep"></div><button class="btn" onclick="triggerImport('trainers')">⬆ Import Excel</button>` : ''}
     </div>
     <div class="table-container">
       ${rows.length === 0
@@ -884,92 +911,48 @@ window.deleteTrainer = async function(id) {
 };
 
 // ═══════════════════════════════════════════════════════════════════════
-// SETTINGS
+// SETTINGS (simplified — auth is now handled via login)
 // ═══════════════════════════════════════════════════════════════════════
 function showSettings() {
-  const s = storage.settings;
-  const roMode = storage.isReadOnly;
-
+  const u = auth.currentUser;
   document.getElementById('content').innerHTML = `
     <div class="settings-wrap">
+      <div class="settings-card" style="margin-bottom:16px">
+        <h2>My Account</h2>
+        <p>Logged in as <strong>${esc(u?.displayName || u?.username)}</strong>
+           &nbsp;<span class="role-badge role-${u?.role}">${esc(u?.role)}</span></p>
+        <h3>Change Password</h3>
+        <div class="form-group"><label>Current Password</label>
+          <input type="password" id="sp-current" autocomplete="current-password" /></div>
+        <div class="form-group"><label>New Password</label>
+          <input type="password" id="sp-new" autocomplete="new-password" /></div>
+        <div class="form-group"><label>Confirm New Password</label>
+          <input type="password" id="sp-confirm" autocomplete="new-password" /></div>
+        <div style="display:flex;gap:10px;margin-top:16px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="doChangePassword()">Change Password</button>
+          <button class="btn btn-danger" onclick="doLogout()" style="margin-left:auto">Sign Out</button>
+        </div>
+        <div id="sp-status" style="margin-top:12px;font-size:13px"></div>
+      </div>
 
-      ${roMode ? `<div style="background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:12px 16px;margin-bottom:16px;font-size:13px">
-        <strong>👁 View-only mode</strong> — you are using the shared read-only token.
-        Enter your personal write token below to enable editing.
+      ${auth.isAdmin ? `
+      <div class="settings-card" style="margin-bottom:16px">
+        <h2>Data Repository</h2>
+        <p>Connected to <strong>${esc(storage.settings.dataOwner)}/${esc(storage.settings.dataRepo)}</strong></p>
+        <button class="btn" onclick="initRepo()">Re-initialize Data Files</button>
+        <div id="s-status" style="margin-top:12px;font-size:13px"></div>
       </div>` : ''}
 
-      <!-- OWNER SECTION -->
-      <div class="settings-card" style="margin-bottom:16px">
-        <h2>Owner Login</h2>
-        <p>Your write token is saved in <em>this browser only</em>. Enter it once per device.</p>
-
-        <h3>Personal Access Token (write access)</h3>
-        <div class="form-group">
-          <label>Token <span style="color:#999;font-size:11px">(classic PAT with <code>repo</code> scope)</span></label>
-          <input type="password" id="s-token" value="${roMode ? '' : esc(s.token||'')}"
-            placeholder="ghp_xxxxxxxxx" autocomplete="off" />
-        </div>
-
-        <h3>Data Repository</h3>
-        <div class="form-group">
-          <label>Owner (GitHub username)</label>
-          <input type="text" id="s-owner" value="${esc(s.dataOwner||'nmrmanohar')}" />
-        </div>
-        <div class="form-group">
-          <label>Repository name</label>
-          <input type="text" id="s-repo" value="${esc(s.dataRepo||'dccloud-data')}" />
-        </div>
-
-        <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;align-items:center">
-          <button class="btn btn-primary" onclick="testAndSave()">Test &amp; Save</button>
-          <button class="btn" onclick="initRepo()">Initialize Data Files</button>
-          ${!roMode && s.token ? `<button class="btn btn-danger" onclick="doLogout()" style="margin-left:auto">Logout</button>` : ''}
-        </div>
-        <div id="s-status" style="margin-top:14px;font-size:13px"></div>
-      </div>
-
-      <!-- AUDITOR SECTION -->
-      <div class="settings-card" style="margin-bottom:16px">
-        <h2>Auditor Access Setup</h2>
-        <p>Set a <strong>read-only token</strong> once — it is saved to <code>config.json</code> in the
-           public app repo so <strong>any browser that opens the app gets it automatically</strong>.
-           Your auditor just opens the URL, no PAT entry needed.</p>
-
-        <h3>Step 1 — Create a read-only PAT on GitHub</h3>
-        <p>GitHub → Settings → Developer settings → Fine-grained tokens → Generate new token<br/>
-           • Repository access: <em>Only select repositories</em> → pick <strong>dccloud-data</strong><br/>
-           • Permissions → Contents: <strong>Read-only</strong><br/>
-           • Copy the token (starts with <code>github_pat_</code>)</p>
-
-        <h3>Step 2 — Save it here (requires your write token to be active above)</h3>
-        <div class="form-group">
-          <label>Read-Only Token for Auditors</label>
-          <input type="password" id="s-readtoken" placeholder="github_pat_xxxxxxxxx" autocomplete="off" />
-        </div>
-        <div style="display:flex;gap:10px;margin-top:16px">
-          <button class="btn btn-primary" onclick="saveAuditorConfig()">Save Auditor Config</button>
-        </div>
-        <div id="s-auditor-status" style="margin-top:14px;font-size:13px"></div>
-        <p style="margin-top:12px;color:#888;font-size:12px">
-          The read-only token is stored in <code>config.json</code> in the public GitHub Pages repo.
-          It only allows reading your invoice data — no writes possible with it.
-        </p>
-      </div>
-
-      <!-- ABOUT -->
       <div class="settings-card">
         <h2>About</h2>
-        <p>
-          App URL: <span class="code">https://nmrmanohar.github.io/dccloud</span><br/>
-          Built for: <strong>DC Cloud – Nallapareddy Manohar Reddy</strong>
-        </p>
+        <p>App URL: <span class="code">https://nmrmanohar.github.io/dccloud</span><br/>
+           Built for: <strong>DC Cloud – Nallapareddy Manohar Reddy</strong></p>
       </div>
-
     </div>`;
 }
 
 window.doLogout = function() {
-  storage.logout();
+  auth.logout();
   Object.keys(cache).forEach(k => cache[k] = null);
   toast('Logged out');
   setTimeout(() => location.reload(), 800);
@@ -1351,18 +1334,406 @@ async function runImport(entity, rows) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// LOGIN PAGE
+// ═══════════════════════════════════════════════════════════════════════
+function showLoginPage() {
+  showAuthShell(`
+    <div class="auth-bg">
+      <div class="auth-card">
+        <div class="auth-header">
+          <div class="logo-icon-lg">☁</div>
+          <div class="auth-title">DC Cloud</div>
+          <div class="auth-subtitle">Training Operations</div>
+        </div>
+        <div class="auth-body">
+          <div id="login-error" class="auth-error" style="display:none"></div>
+          <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="l-username" autocomplete="username" placeholder="Enter username"
+              onkeydown="if(event.key==='Enter')document.getElementById('l-password').focus()" />
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="l-password" autocomplete="current-password" placeholder="Enter password"
+              onkeydown="if(event.key==='Enter')doLogin()" />
+          </div>
+          <label class="checkbox-label" style="margin-top:8px">
+            <input type="checkbox" id="l-remember" /> Remember me
+          </label>
+        </div>
+        <div class="auth-footer">
+          <button class="btn btn-primary btn-full" id="login-btn" onclick="doLogin()">Sign In</button>
+        </div>
+      </div>
+    </div>`);
+  setTimeout(() => document.getElementById('l-username')?.focus(), 50);
+}
+
+window.doLogin = async function() {
+  const username = document.getElementById('l-username')?.value?.trim();
+  const password = document.getElementById('l-password')?.value;
+  const remember = document.getElementById('l-remember')?.checked;
+  const errEl    = document.getElementById('login-error');
+  const btn      = document.getElementById('login-btn');
+
+  if (!username || !password) {
+    errEl.textContent = 'Please enter username and password.';
+    errEl.style.display = 'block'; return;
+  }
+  errEl.style.display = 'none';
+  btn.disabled = true; btn.textContent = 'Signing in…';
+
+  try {
+    await auth.login(username, password, storage.configUsers, storage.readToken, remember);
+    route();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Sign In';
+    document.getElementById('l-password')?.select();
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// FIRST-TIME SETUP WIZARD
+// ═══════════════════════════════════════════════════════════════════════
+let _setupStep = 1, _setupToken = null;
+
+function showFirstTimeSetup() {
+  showAuthShell(`
+    <div class="auth-bg">
+      <div class="auth-card setup-card">
+        <div class="auth-header">
+          <div class="logo-icon-lg">☁</div>
+          <div class="auth-title">DC Cloud Setup</div>
+          <div class="auth-subtitle">One-time configuration</div>
+        </div>
+
+        <div class="setup-steps">
+          <div class="setup-step active" id="step-dot-1">1 · GitHub</div>
+          <div class="setup-step" id="step-dot-2">2 · Admin Account</div>
+        </div>
+
+        <div id="setup-step-1" class="auth-body">
+          <p class="setup-info">Connect to the GitHub repository where training data will be stored. Your token is only entered once and stored encrypted — users will never need to enter a PAT.</p>
+          <div class="form-group">
+            <label>GitHub Personal Access Token (repo scope)</label>
+            <input type="password" id="su-token" autocomplete="off" placeholder="ghp_…" />
+            <div class="field-hint">Needs repo (read/write) scope. Will be encrypted with your password.</div>
+          </div>
+          <div class="form-group">
+            <label>Data Repository Owner</label>
+            <input type="text" id="su-owner" value="${esc(storage.settings.dataOwner || '')}" placeholder="github-username" />
+          </div>
+          <div class="form-group">
+            <label>Data Repository Name</label>
+            <input type="text" id="su-repo" value="${esc(storage.settings.dataRepo || '')}" placeholder="dccloud-data" />
+          </div>
+          <div id="su-status1" style="min-height:20px;font-size:13px;margin-top:4px"></div>
+        </div>
+
+        <div id="setup-step-2" class="auth-body" style="display:none">
+          <p class="setup-info">Create the first administrator account. Admins can manage all data and users.</p>
+          <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="su-username" autocomplete="username" placeholder="admin" />
+          </div>
+          <div class="form-group">
+            <label>Display Name</label>
+            <input type="text" id="su-displayname" placeholder="Your full name" />
+          </div>
+          <div class="form-group">
+            <label>Password (min 8 characters)</label>
+            <input type="password" id="su-password" autocomplete="new-password" />
+          </div>
+          <div class="form-group">
+            <label>Confirm Password</label>
+            <input type="password" id="su-confirm" autocomplete="new-password"
+              onkeydown="if(event.key==='Enter')setupNext()" />
+          </div>
+          <div id="su-status2" style="min-height:20px;font-size:13px;margin-top:4px"></div>
+        </div>
+
+        <div class="auth-footer">
+          <button class="btn btn-primary btn-full" id="su-next-btn" onclick="setupNext()">Next →</button>
+        </div>
+      </div>
+    </div>`);
+  _setupStep = 1;
+  setTimeout(() => document.getElementById('su-token')?.focus(), 50);
+}
+
+window.setupNext = async function() {
+  const btn = document.getElementById('su-next-btn');
+
+  if (_setupStep === 1) {
+    const token  = document.getElementById('su-token').value.trim();
+    const owner  = document.getElementById('su-owner').value.trim();
+    const repo   = document.getElementById('su-repo').value.trim();
+    const status = document.getElementById('su-status1');
+    if (!token || !owner || !repo) {
+      status.innerHTML = '<span style="color:red">All fields are required.</span>'; return;
+    }
+    btn.disabled = true; btn.textContent = 'Testing connection…';
+    status.textContent = 'Connecting to GitHub…';
+    storage.saveSettings({ token, dataOwner: owner, dataRepo: repo });
+    try {
+      const login = await storage.testConnection();
+      status.innerHTML = `<span style="color:green">✓ Connected as <strong>${esc(login)}</strong></span>`;
+      _setupToken = token;
+      _setupStep  = 2;
+      document.getElementById('setup-step-1').style.display = 'none';
+      document.getElementById('setup-step-2').style.display = 'block';
+      document.getElementById('step-dot-1').classList.add('done');
+      document.getElementById('step-dot-2').classList.add('active');
+      btn.disabled = false; btn.textContent = 'Create Admin & Finish';
+      document.getElementById('su-username')?.focus();
+    } catch (e) {
+      status.innerHTML = `<span style="color:red">✗ ${esc(e.message)}</span>`;
+      btn.disabled = false; btn.textContent = 'Next →';
+    }
+
+  } else {
+    const username    = document.getElementById('su-username').value.trim();
+    const displayName = document.getElementById('su-displayname').value.trim();
+    const password    = document.getElementById('su-password').value;
+    const confirm     = document.getElementById('su-confirm').value;
+    const status      = document.getElementById('su-status2');
+    if (!username || !password) { status.innerHTML = '<span style="color:red">Username and password are required.</span>'; return; }
+    if (password !== confirm)   { status.innerHTML = '<span style="color:red">Passwords do not match.</span>'; return; }
+    if (password.length < 8)    { status.innerHTML = '<span style="color:red">Password must be at least 8 characters.</span>'; return; }
+
+    btn.disabled = true; btn.textContent = 'Setting up…';
+    status.textContent = 'Creating admin account…';
+    try {
+      const user = await auth.createUser(username, displayName || username, password, 'admin', _setupToken);
+      const cfg  = { dataOwner: storage.settings.dataOwner, dataRepo: storage.settings.dataRepo, readToken: null, users: [user] };
+      status.textContent = 'Saving configuration…';
+      await storage.saveRemoteConfig(cfg);
+      status.textContent = 'Initializing data files…';
+      await storage.initialize();
+      status.innerHTML = '<span style="color:green">✓ Setup complete! Signing you in…</span>';
+      await auth.login(username, password, [user], null, true);
+      setTimeout(() => route(), 900);
+    } catch (e) {
+      status.innerHTML = `<span style="color:red">✗ ${esc(e.message)}</span>`;
+      btn.disabled = false; btn.textContent = 'Create Admin & Finish';
+    }
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// USER MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════
+function showUserManagement() {
+  const users = storage.configUsers;
+  document.getElementById('content').innerHTML = `
+    <div class="toolbar">
+      <span class="toolbar-title">Users &amp; Roles</span>
+      <button class="btn btn-primary" onclick="showAddUserModal()">+ Add User</button>
+    </div>
+    <div class="table-container">
+      ${users.length === 0
+        ? `<div class="empty-state"><h3>No users.</h3></div>`
+        : `<table>
+          <thead><tr>
+            <th>Display Name</th><th>Username</th><th>Role</th><th>Status</th><th>Actions</th>
+          </tr></thead>
+          <tbody>${users.map(u => `<tr>
+            <td>${esc(u.displayName)}</td>
+            <td>${esc(u.username)}</td>
+            <td><span class="role-badge role-${esc(u.role)}">${esc(u.role)}</span></td>
+            <td><span class="status-${u.active !== false ? 'active' : 'inactive'}">${u.active !== false ? 'Active' : 'Inactive'}</span></td>
+            <td style="white-space:nowrap">
+              ${u.id === auth.currentUser?.userId
+                ? '<span style="color:#999;font-size:12px">(you)</span>'
+                : `<button class="btn btn-sm" onclick="showEditUserModal('${esc(u.id)}')">Edit</button>
+                   <button class="btn btn-sm ${u.active !== false ? 'btn-danger' : ''}" style="margin-left:4px"
+                     onclick="toggleUserActive('${esc(u.id)}')">${u.active !== false ? 'Deactivate' : 'Activate'}</button>`}
+            </td>
+          </tr>`).join('')}
+          </tbody></table>`}
+    </div>`;
+}
+
+window.showAddUserModal = function() {
+  document.getElementById('modalTitle').textContent = 'Add User';
+  document.getElementById('modalBody').innerHTML = `
+    <div class="form-group"><label>Username</label><input type="text" id="mu-username" /></div>
+    <div class="form-group"><label>Display Name</label><input type="text" id="mu-displayname" /></div>
+    <div class="form-group"><label>Role</label>
+      <select id="mu-role" onchange="onNewUserRoleChange()">
+        <option value="viewer">Viewer — read-only, export</option>
+        <option value="editor">Editor — create &amp; edit</option>
+        <option value="admin">Admin — full access + user mgmt</option>
+      </select></div>
+    <div class="form-group"><label>Password (min 8 characters)</label><input type="password" id="mu-password" autocomplete="new-password" /></div>
+    <div class="form-group"><label>Confirm Password</label><input type="password" id="mu-confirm" autocomplete="new-password" /></div>
+    <div id="mu-token-grp" class="form-group" style="display:none">
+      <label>Write Token (GitHub PAT)</label>
+      <input type="password" id="mu-token" placeholder="ghp_… — required for admin / editor" />
+      <div class="field-hint">Token will be encrypted with the user's password and stored in config.json.</div>
+    </div>`;
+  document.getElementById('modalConfirm').textContent = 'Create User';
+  document.getElementById('modalOverlay').style.display = 'flex';
+  _modalResolve = handleAddUser;
+  setTimeout(() => document.getElementById('mu-username')?.focus(), 50);
+};
+
+window.onNewUserRoleChange = function() {
+  const role = document.getElementById('mu-role')?.value;
+  const grp  = document.getElementById('mu-token-grp');
+  if (grp) grp.style.display = (role === 'viewer') ? 'none' : 'block';
+};
+
+async function handleAddUser(confirmed) {
+  document.getElementById('modalOverlay').style.display = 'none';
+  document.getElementById('modalConfirm').textContent = 'Confirm';
+  if (!confirmed) return;
+
+  const username    = document.getElementById('mu-username')?.value?.trim();
+  const displayName = document.getElementById('mu-displayname')?.value?.trim();
+  const role        = document.getElementById('mu-role')?.value;
+  const password    = document.getElementById('mu-password')?.value;
+  const confirm     = document.getElementById('mu-confirm')?.value;
+  const writeToken  = document.getElementById('mu-token')?.value?.trim();
+
+  if (!username || !password) { toast('Username and password are required', 'error'); return; }
+  if (password !== confirm)   { toast('Passwords do not match', 'error'); return; }
+  if (password.length < 8)    { toast('Password must be at least 8 characters', 'error'); return; }
+  if (role !== 'viewer' && !writeToken) { toast('Write token is required for admin/editor roles', 'error'); return; }
+
+  const users = storage.configUsers;
+  if (users.find(u => u.username.toLowerCase() === username.toLowerCase())) {
+    toast('Username already exists', 'error'); return;
+  }
+
+  try {
+    const newUser = await auth.createUser(username, displayName || username, password, role, writeToken || null);
+    const cfg = { ...storage.remoteConfig, users: [...users, newUser] };
+    await storage.saveRemoteConfig(cfg);
+    toast(`User "${username}" created`, 'success');
+    showUserManagement();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+window.showEditUserModal = function(userId) {
+  const users = storage.configUsers;
+  const u = users.find(u => u.id === userId);
+  if (!u) return;
+
+  document.getElementById('modalTitle').textContent = `Edit: ${u.displayName || u.username}`;
+  document.getElementById('modalBody').innerHTML = `
+    <div class="form-group"><label>Role</label>
+      <select id="eu-role">
+        <option value="viewer" ${u.role==='viewer' ?'selected':''}>Viewer — read-only, export</option>
+        <option value="editor" ${u.role==='editor' ?'selected':''}>Editor — create &amp; edit</option>
+        <option value="admin"  ${u.role==='admin'  ?'selected':''}>Admin — full access + user mgmt</option>
+      </select></div>
+    <hr style="margin:14px 0;border:none;border-top:1px solid #eee"/>
+    <p style="font-size:13px;color:#666;margin:0 0 10px">Reset password (leave blank to keep current):</p>
+    <div class="form-group"><label>New Password</label><input type="password" id="eu-password" autocomplete="new-password" /></div>
+    <div class="form-group"><label>Confirm Password</label><input type="password" id="eu-confirm" autocomplete="new-password" /></div>
+    <div class="form-group">
+      <label>Write Token (leave blank to keep current)</label>
+      <input type="password" id="eu-token" placeholder="ghp_… — only needed if changing role or token" />
+      <div class="field-hint">Only required if changing to admin/editor or if you want to update the stored token.</div>
+    </div>`;
+  document.getElementById('modalConfirm').textContent = 'Save';
+  document.getElementById('modalOverlay').style.display = 'flex';
+  _modalResolve = (ok) => handleEditUser(ok, userId);
+};
+
+async function handleEditUser(confirmed, userId) {
+  document.getElementById('modalOverlay').style.display = 'none';
+  document.getElementById('modalConfirm').textContent = 'Confirm';
+  if (!confirmed) return;
+
+  const newRole    = document.getElementById('eu-role')?.value;
+  const newPw      = document.getElementById('eu-password')?.value;
+  const confirm    = document.getElementById('eu-confirm')?.value;
+  const writeToken = document.getElementById('eu-token')?.value?.trim();
+
+  if (newPw && newPw !== confirm) { toast('Passwords do not match', 'error'); return; }
+  if (newPw && newPw.length < 8)  { toast('Password must be at least 8 characters', 'error'); return; }
+
+  try {
+    const users = storage.configUsers;
+    const idx   = users.findIndex(u => u.id === userId);
+    if (idx < 0) { toast('User not found', 'error'); return; }
+
+    const user = { ...users[idx], role: newRole };
+
+    if (newPw) {
+      // Re-encrypt token with new password; use provided write token or session token
+      const token = writeToken || (newRole !== 'viewer' ? auth.token : null);
+      await auth.changePassword(user, newPw, token);
+    }
+    // Note: updating the write token alone (without changing password) is not supported,
+    // as re-encryption requires the plaintext password. Use password reset for token rotation.
+
+    users[idx] = user;
+    const cfg = { ...storage.remoteConfig, users };
+    await storage.saveRemoteConfig(cfg);
+    toast('User updated', 'success');
+    showUserManagement();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+window.toggleUserActive = async function(userId) {
+  try {
+    const users = storage.configUsers;
+    const idx   = users.findIndex(u => u.id === userId);
+    if (idx < 0) return;
+    users[idx] = { ...users[idx], active: !(users[idx].active !== false) };
+    const cfg = { ...storage.remoteConfig, users };
+    await storage.saveRemoteConfig(cfg);
+    toast('User updated', 'success');
+    showUserManagement();
+  } catch (e) { toast(e.message, 'error'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// CHANGE PASSWORD (from Settings page)
+// ═══════════════════════════════════════════════════════════════════════
+window.doChangePassword = async function() {
+  const current = document.getElementById('sp-current')?.value;
+  const newPw   = document.getElementById('sp-new')?.value;
+  const confirm = document.getElementById('sp-confirm')?.value;
+  const status  = document.getElementById('sp-status');
+
+  if (!current || !newPw) { status.innerHTML = '<span style="color:red">All fields are required.</span>'; return; }
+  if (newPw !== confirm)  { status.innerHTML = '<span style="color:red">Passwords do not match.</span>'; return; }
+  if (newPw.length < 8)   { status.innerHTML = '<span style="color:red">Password must be at least 8 characters.</span>'; return; }
+
+  status.textContent = 'Verifying current password…';
+  try {
+    const users   = storage.configUsers;
+    const userIdx = users.findIndex(u => u.id === auth.currentUser?.userId);
+    if (userIdx < 0) throw new Error('User account not found in config.');
+    const user = users[userIdx];
+
+    const ok = await auth.verifyPassword(current, user.passwordHash);
+    if (!ok) { status.innerHTML = '<span style="color:red">Current password is incorrect.</span>'; return; }
+
+    status.textContent = 'Updating password…';
+    const writeToken = auth.token; // decrypt & re-encrypt with new password
+    await auth.changePassword(user, newPw, writeToken);
+    users[userIdx] = user;
+
+    const cfg = { ...storage.remoteConfig, users };
+    await storage.saveRemoteConfig(cfg);
+    status.innerHTML = '<span style="color:green">✓ Password changed successfully. Signing out to refresh session…</span>';
+    setTimeout(() => doLogout(), 1800);
+  } catch (e) {
+    status.innerHTML = `<span style="color:red">✗ ${esc(e.message)}</span>`;
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', async () => {
-  // Load remote config.json first (sets up readToken / dataRepo auto-config)
   await storage.loadRemoteConfig();
-
-  // Show read-only badge in top bar if using shared auditor token
-  if (storage.isReadOnly) {
-    const right = document.querySelector('.top-bar-right');
-    right.insertAdjacentHTML('afterbegin',
-      '<span class="env-badge" style="background:rgba(255,200,0,.25);border-color:rgba(255,200,0,.6);margin-right:8px">👁 View Only</span>');
-  }
-
   route();
 });
