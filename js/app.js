@@ -192,13 +192,13 @@ async function showTrainingsList() {
   const totGST      = rows.reduce((s, t) => s + (+t.gst_amount       || 0), 0);
   const totTrainer  = rows.reduce((s, t) => s + (+t.total_trainer_fee|| 0), 0);
 
+  const curFYStart  = currentFYRange().start;
+  const prevFYStart = curFYStart.getFullYear() - 1;
+
   const fyLabel = _fyYear === 'all'     ? 'All Trainings'
     : _fyYear === 'current' ? fy.label
     : _fyYear === 'prev'    ? `Previous FY (${prevFYStart}-${String(prevFYStart+1).slice(2)}) Trainings`
     : `FY ${_fyYear}-${String(parseInt(_fyYear)+1).slice(2)} Trainings`;
-
-  const curFYStart  = currentFYRange().start;
-  const prevFYStart = curFYStart.getFullYear() - 1;
   const fySelectOpts = `
     <option value="current" ${_fyYear==='current'?'selected':''}>This FY</option>
     <option value="prev"    ${_fyYear==='prev'   ?'selected':''}>Previous FY (${prevFYStart}-${String(prevFYStart+1).slice(2)})</option>
