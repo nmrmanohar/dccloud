@@ -6,6 +6,7 @@
 
 // ── In-memory cache ───────────────────────────────────────────────────
 const cache = { trainings: null, vendors: null, trainers: null };
+let _importEntity = null; // which entity is being imported
 
 async function loadEntity(entity) {
   if (!cache[entity]) cache[entity] = await storage.getAll(entity);
@@ -108,16 +109,37 @@ function trainerName(id) {
 // ═══════════════════════════════════════════════════════════════════════
 // TRAININGS LIST
 // ═══════════════════════════════════════════════════════════════════════
-let _fyAll = false;
+let _fyYear = 'current'; // 'current' | 'all' | 2023 | 2024 …
 let _search = '';
 
 async function showTrainingsList() {
   await Promise.all([loadEntity('trainings'), loadEntity('vendors'), loadEntity('trainers')]);
 
+  // Build list of unique FY years from data
+  const fySet = new Set();
+  cache.trainings.forEach(t => {
+    if (t.invoice_date) {
+      const d = new Date(t.invoice_date + 'T00:00:00');
+      if (!isNaN(d)) fySet.add(d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1);
+    }
+  });
+  const fyYears = Array.from(fySet).sort((a, b) => b - a);
+
   const fy = currentFYRange();
   let rows = cache.trainings.slice();
 
-  if (!_fyAll) rows = rows.filter(t => inCurrentFY(t.invoice_date));
+  if (_fyYear === 'current') {
+    rows = rows.filter(t => inCurrentFY(t.invoice_date));
+  } else if (_fyYear !== 'all') {
+    const yr = parseInt(_fyYear);
+    const s = new Date(yr, 3, 1), e = new Date(yr + 1, 2, 31, 23, 59, 59);
+    rows = rows.filter(t => {
+      if (!t.invoice_date) return false;
+      const d = new Date(t.invoice_date + 'T00:00:00');
+      return d >= s && d <= e;
+    });
+  }
+
   if (_search) {
     const q = _search.toLowerCase();
     rows = rows.filter(t =>
@@ -133,22 +155,29 @@ async function showTrainingsList() {
   const totGST      = rows.reduce((s, t) => s + (+t.gst_amount       || 0), 0);
   const totTrainer  = rows.reduce((s, t) => s + (+t.total_trainer_fee|| 0), 0);
 
+  const fyLabel = _fyYear === 'all' ? 'All Trainings'
+    : _fyYear === 'current' ? fy.label
+    : `FY ${_fyYear}-${String(parseInt(_fyYear)+1).slice(2)} Trainings`;
+
+  const fySelectOpts = `
+    <option value="current" ${_fyYear==='current'?'selected':''}>This FY</option>
+    ${fyYears.map(y => `<option value="${y}" ${_fyYear==y?'selected':''}>${y}-${String(y+1).slice(2)}</option>`).join('')}
+    <option value="all" ${_fyYear==='all'?'selected':''}>All Years</option>`;
+
   const content = document.getElementById('content');
   content.innerHTML = `
     <div class="toolbar">
-      <span class="toolbar-title">${esc(_fyAll ? 'All Trainings' : fy.label)}</span>
+      <span class="toolbar-title">${esc(fyLabel)}</span>
       <button class="btn btn-primary" onclick="navigate('trainings/new')">+ New</button>
       <div class="toolbar-sep"></div>
       <button class="btn" onclick="exportTrainings()">⬇ Export CSV</button>
+      <button class="btn" onclick="triggerImport('trainings')">⬆ Import Excel</button>
     </div>
 
     <div class="filter-bar">
       <input class="search-box" type="text" placeholder="Search invoice #, course, vendor…"
         value="${esc(_search)}" oninput="onSearchChange(this.value)" />
-      <select class="filter-select" onchange="onFYChange(this.value)">
-        <option value="current" ${!_fyAll ? 'selected' : ''}>This FY</option>
-        <option value="all"     ${_fyAll  ? 'selected' : ''}>All Years</option>
-      </select>
+      <select class="filter-select" onchange="onFYChange(this.value)">${fySelectOpts}</select>
       <span class="filter-count">${rows.length} record(s)</span>
     </div>
 
@@ -207,7 +236,7 @@ function payBadge(status) {
 }
 
 window.onSearchChange = function(v) { _search = v; showTrainingsList(); };
-window.onFYChange     = function(v) { _fyAll = v === 'all'; showTrainingsList(); };
+window.onFYChange     = function(v) { _fyYear = v; showTrainingsList(); };
 
 window.exportTrainings = async function() {
   await loadEntity('vendors'); await loadEntity('trainers');
@@ -552,6 +581,8 @@ async function showVendorsList() {
     <div class="toolbar">
       <span class="toolbar-title">Accounts</span>
       <button class="btn btn-primary" onclick="navigate('vendors/new')">+ New Account</button>
+      <div class="toolbar-sep"></div>
+      <button class="btn" onclick="triggerImport('vendors')">⬆ Import Excel</button>
     </div>
     <div class="table-container">
       ${rows.length === 0
@@ -700,6 +731,8 @@ async function showTrainersList() {
     <div class="toolbar">
       <span class="toolbar-title">Trainers</span>
       <button class="btn btn-primary" onclick="navigate('trainers/new')">+ New Trainer</button>
+      <div class="toolbar-sep"></div>
+      <button class="btn" onclick="triggerImport('trainers')">⬆ Import Excel</button>
     </div>
     <div class="table-container">
       ${rows.length === 0
@@ -916,6 +949,218 @@ window.initRepo = async function() {
     status.innerHTML = `<span style="color:red">✗ ${esc(e.message)}</span>`;
   }
 };
+
+// ═══════════════════════════════════════════════════════════════════════
+// EXCEL IMPORT
+// ═══════════════════════════════════════════════════════════════════════
+
+/** Trigger hidden file input for a given entity */
+window.triggerImport = function(entity) {
+  _importEntity = entity;
+  const inp = document.getElementById('importFile');
+  inp.value = '';
+  inp.click();
+};
+
+/** Called when user selects a file */
+window.handleImportFile = async function(input) {
+  if (!input.files.length) return;
+  const file  = input.files[0];
+  const entity = _importEntity;
+  toast(`Reading ${file.name}…`);
+
+  try {
+    const rows = await readExcelFile(file);
+    if (!rows.length) { toast('No data rows found in file', 'error'); return; }
+
+    // Show preview modal before committing
+    let preview = '';
+    let count = rows.length;
+    if (entity === 'vendors')   preview = `Found <strong>${count}</strong> accounts to import.`;
+    if (entity === 'trainers')  preview = `Found <strong>${count}</strong> trainers to import.`;
+    if (entity === 'trainings') preview = `Found <strong>${count}</strong> training records to import.`;
+
+    document.getElementById('modalTitle').textContent = 'Confirm Import';
+    document.getElementById('modalBody').innerHTML =
+      `${preview}<br/><br/>This will <strong>add</strong> records to existing data (duplicates by name/invoice number will be skipped).`;
+    document.getElementById('modalConfirm').textContent = 'Import';
+    document.getElementById('modalOverlay').style.display = 'flex';
+
+    _modalResolve = async (confirmed) => {
+      document.getElementById('modalOverlay').style.display = 'none';
+      document.getElementById('modalConfirm').textContent = 'Delete';
+      if (!confirmed) return;
+      await runImport(entity, rows);
+    };
+
+  } catch (e) {
+    toast('Failed to read file: ' + e.message, 'error');
+  }
+};
+
+/** Read Excel/CSV file using SheetJS → array of plain objects */
+async function readExcelFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb   = XLSX.read(e.target.result, { type: 'binary', cellDates: false });
+        const ws   = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        resolve(rows);
+      } catch (err) { reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsBinaryString(file);
+  });
+}
+
+/** Run the actual import for a given entity */
+async function runImport(entity, rows) {
+  toast('Importing…');
+  try {
+    await Promise.all([loadEntity('vendors'), loadEntity('trainers'), loadEntity('trainings')]);
+
+    if (entity === 'vendors') {
+      const existing = new Set(cache.vendors.map(v => v.account_name?.toLowerCase()));
+      let added = 0;
+      for (const row of rows) {
+        const name = (row['Account Name'] || '').trim();
+        if (!name || existing.has(name.toLowerCase())) continue;
+        const addr = String(row['Address 1'] || '');
+        const addrLines = addr.split(/\n/).map(s => s.trim()).filter(Boolean);
+        cache.vendors.push({
+          id:              generateId(),
+          account_name:    name,
+          account_type:    row['Account Type'] || 'Vendor',
+          phone:           String(row['Main Phone'] || '').trim(),
+          email:           String(row['Email'] || '').trim(),
+          website:         String(row['Website'] || '').trim(),
+          gst_number:      String(row['GST Number'] || '').trim(),
+          pan_number:      String(row['PAN Number'] || '').trim(),
+          address_street1: addrLines[0] || '',
+          address_street2: addrLines[1] || '',
+          address_street3: addrLines[2] || '',
+          address_city:    String(row['Address 1: City'] || '').trim(),
+          address_state:   String(row['Address 1: State/Province'] || '').trim(),
+          address_zip:     String(row['Address 1: ZIP/Postal Code'] || '').trim(),
+          address_country: String(row['Address 1: Country/Region'] || '').trim(),
+          parent_account:  '', // will resolve below
+          _parent_name:    String(row['Parent Account'] || '').trim()
+        });
+        existing.add(name.toLowerCase());
+        added++;
+      }
+      // Resolve parent account IDs
+      cache.vendors.forEach(v => {
+        if (v._parent_name) {
+          const p = cache.vendors.find(x => x.account_name?.toLowerCase() === v._parent_name.toLowerCase());
+          if (p) v.parent_account = p.id;
+          delete v._parent_name;
+        }
+      });
+      await storage.saveAll('vendors', cache.vendors, `Import ${added} accounts`);
+      toast(`Imported ${added} accounts`, 'success');
+      showVendorsList();
+
+    } else if (entity === 'trainers') {
+      const existing = new Set(
+        cache.trainers.map(t => `${t.first_name} ${t.last_name}`.trim().toLowerCase())
+      );
+      let added = 0;
+      for (const row of rows) {
+        const first = String(row['First Name'] || '').trim();
+        const last  = String(row['Last Name']  || '').trim();
+        const full  = `${first} ${last}`.trim();
+        if (!full || existing.has(full.toLowerCase())) continue;
+        cache.trainers.push({
+          id:               generateId(),
+          first_name:       first,
+          middle_name:      String(row['Middle Name']    || '').trim(),
+          last_name:        last,
+          email:            String(row['Email']          || '').trim(),
+          business_phone:   String(row['Business Phone'] || '').trim(),
+          mobile_phone:     String(row['Mobile Phone']   || '').trim(),
+          gst_number:       String(row['GST Number']     || '').trim(),
+          pan_number:       String(row['PAN Number']     || '').trim(),
+          paid_to:          String(row['Paid To']        || '').trim(),
+          payment_terms:    String(row['Payment Terms']  || '').trim(),
+          preferred_contact:'Any',
+          address_city:     String(row['Address 1: City'] || '').trim(),
+          address_country:  String(row['Address 1: Country/Region'] || 'India').trim()
+        });
+        existing.add(full.toLowerCase());
+        added++;
+      }
+      await storage.saveAll('trainers', cache.trainers, `Import ${added} trainers`);
+      toast(`Imported ${added} trainers`, 'success');
+      showTrainersList();
+
+    } else if (entity === 'trainings') {
+      const existing = new Set(cache.trainings.map(t => (t.invoice_number || '').toLowerCase()));
+      let added = 0, skipped = 0;
+      for (const row of rows) {
+        const invNum = String(row['Invoice Number'] || '').trim();
+        if (!invNum) { skipped++; continue; }
+        if (existing.has(invNum.toLowerCase())) { skipped++; continue; }
+
+        // Resolve vendor
+        const vendorName_ = String(row['Vendor'] || '').trim();
+        const vendor = cache.vendors.find(v => v.account_name?.toLowerCase() === vendorName_.toLowerCase());
+
+        // Resolve customer
+        const custName = String(row['Customer'] || '').trim();
+        const customer = custName ? cache.vendors.find(v => v.account_name?.toLowerCase() === custName.toLowerCase()) : null;
+
+        // Resolve trainer
+        const trainerName_ = String(row['Trainer'] || '').trim();
+        const trainer = cache.trainers.find(t =>
+          `${t.first_name} ${t.last_name}`.trim().toLowerCase() === trainerName_.toLowerCase()
+        );
+
+        cache.trainings.push({
+          id:                   generateId(),
+          invoice_number:       invNum,
+          invoice_date:         parseDMY(row['Invoice Date']),
+          payment_due_date:     parseDMY(row['Payment Due Date']),
+          course_name:          String(row['Course Name']      || '').trim(),
+          po_number:            String(row['PO Number']        || '').trim(),
+          date_of_course:       parseDMY(row['Date of Course(PO)']),
+          vendor_id:            vendor?.id   || '',
+          customer_id:          customer?.id || '',
+          gst_required:         String(row['GST Required?']   || 'No').trim(),
+          currency:             String(row['Currency']        || 'INR').trim(),
+          exchange_rate:        parseNum(row['Exchange']),
+          per_day_fee:          parseNum(row['Per Day Fee']),
+          days:                 parseInt(row['Days']) || 1,
+          payment_status:       String(row['Payment Status']  || 'Not Paid').trim(),
+          invoice_value:        parseNum(row['Invoice Value'])        || 0,
+          gst_amount:           parseNum(row['GST Amount'])           || 0,
+          taxable_amount:       parseNum(row['Taxable Amount'])       || 0,
+          gst_credited:         String(row['GST Credited?']   || 'NA').trim(),
+          received_amount:      parseNum(row['Received Amount']),
+          paid_date:            parseDMY(row['Paid Date']),
+          trainer_id:           trainer?.id  || '',
+          trainer_fee_per_day:  parseNum(row['Trainer Fee Per Day(incl Taxes)']),
+          total_trainer_fee:    parseNum(row['Total Trainer Fee(incl Taxes)']) || 0,
+          trainer_fee_paid:     String(row['Trainer Fee Paid?']       || 'NA').trim(),
+          trainer_paid_date:    parseDMY(row['Trainer Paid Date']),
+          trainer_tds_amount:   parseNum(row['Trainer TDS Amount'])   || 0,
+          trainer_tds_credited: String(row['Trainer TDS Credited?']   || 'NA').trim(),
+          margin:               parseNum(row['Margin'])               || 0,
+          notes:                ''
+        });
+        existing.add(invNum.toLowerCase());
+        added++;
+      }
+      await storage.saveAll('trainings', cache.trainings, `Import ${added} trainings`);
+      toast(`Imported ${added} records${skipped ? `, skipped ${skipped} duplicates` : ''}`, 'success');
+      showTrainingsList();
+    }
+  } catch (e) {
+    toast('Import failed: ' + e.message, 'error');
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // INIT

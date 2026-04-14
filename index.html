@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>DC Cloud – Training Operations</title>
   <link rel="stylesheet" href="css/style.css" />
+  <!-- SheetJS for Excel import -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
   <div id="app">
@@ -72,6 +74,9 @@
       </div>
     </div>
   </div>
+
+  <!-- Hidden file input for Excel import -->
+  <input type="file" id="importFile" accept=".xlsx,.csv" style="display:none" onchange="handleImportFile(this)" />
 
   <script src="js/storage.js"></script>
   <script src="js/utils.js"></script>

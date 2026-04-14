@@ -104,6 +104,29 @@ function inCurrentFY(dateStr) {
   return d >= start && d <= end;
 }
 
+// ── Date parsing ─────────────────────────────────────────────────────
+/** Parse DD-MM-YYYY or DD/MM/YYYY → YYYY-MM-DD for date inputs */
+function parseDMY(val) {
+  if (!val) return '';
+  const s = String(val).trim();
+  const m = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
+  if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  // Excel serial date number
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    const d = new Date(Math.round((parseFloat(s) - 25569) * 86400 * 1000));
+    if (!isNaN(d)) return d.toISOString().slice(0, 10);
+  }
+  return '';
+}
+
+/** Parse a numeric value safely */
+function parseNum(val) {
+  if (val === null || val === undefined || val === '') return null;
+  const n = parseFloat(String(val).replace(/,/g, ''));
+  return isNaN(n) ? null : n;
+}
+
 // ── Export to CSV ─────────────────────────────────────────────────────
 function downloadCSV(rows, filename) {
   const csv = rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
