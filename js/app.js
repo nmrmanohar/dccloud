@@ -138,10 +138,13 @@ function trainerName(id) {
 // ═══════════════════════════════════════════════════════════════════════
 // TRAININGS LIST
 // ═══════════════════════════════════════════════════════════════════════
-let _fyYear = 'current'; // 'current' | 'all' | 2023 | 2024 …
+let _fyYear = null; // set on first load based on role
 let _search = '';
 
 async function showTrainingsList() {
+  // Default view: viewers start on Audit Info (last month); others on This FY
+  if (_fyYear === null) _fyYear = auth.role === 'viewer' ? 'lastmonth' : 'current';
+
   await Promise.all([loadEntity('trainings'), loadEntity('vendors'), loadEntity('trainers')]);
 
   // Build list of unique FY years from data
@@ -157,6 +160,14 @@ async function showTrainingsList() {
   const fy = currentFYRange();
   let rows = cache.trainings.slice();
 
+  // Compute last-month range (used for both filter and label)
+  const _now = new Date();
+  const _lmY = _now.getMonth() === 0 ? _now.getFullYear() - 1 : _now.getFullYear();
+  const _lmM = _now.getMonth() === 0 ? 11 : _now.getMonth() - 1;
+  const lastMonthStart = new Date(_lmY, _lmM, 1);
+  const lastMonthEnd   = new Date(_lmY, _lmM + 1, 0, 23, 59, 59);
+  const lastMonthLabel = lastMonthStart.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
   if (_fyYear === 'current') {
     rows = rows.filter(t => inCurrentFY(t.invoice_date));
   } else if (_fyYear === 'prev') {
@@ -166,6 +177,12 @@ async function showTrainingsList() {
       if (!t.invoice_date) return false;
       const d = new Date(t.invoice_date + 'T00:00:00');
       return d >= s && d <= e;
+    });
+  } else if (_fyYear === 'lastmonth') {
+    rows = rows.filter(t => {
+      if (!t.invoice_date) return false;
+      const d = new Date(t.invoice_date + 'T00:00:00');
+      return d >= lastMonthStart && d <= lastMonthEnd;
     });
   } else if (_fyYear !== 'all') {
     const yr = parseInt(_fyYear);
@@ -195,15 +212,17 @@ async function showTrainingsList() {
   const curFYStart  = currentFYRange().start;
   const prevFYStart = curFYStart.getFullYear() - 1;
 
-  const fyLabel = _fyYear === 'all'     ? 'All Trainings'
-    : _fyYear === 'current' ? fy.label
-    : _fyYear === 'prev'    ? `Previous FY (${prevFYStart}-${String(prevFYStart+1).slice(2)}) Trainings`
+  const fyLabel = _fyYear === 'all'       ? 'All Trainings'
+    : _fyYear === 'current'   ? fy.label
+    : _fyYear === 'prev'      ? `Previous FY (${prevFYStart}-${String(prevFYStart+1).slice(2)}) Trainings`
+    : _fyYear === 'lastmonth' ? `Audit Info – ${lastMonthLabel}`
     : `FY ${_fyYear}-${String(parseInt(_fyYear)+1).slice(2)} Trainings`;
   const fySelectOpts = `
-    <option value="current" ${_fyYear==='current'?'selected':''}>This FY</option>
-    <option value="prev"    ${_fyYear==='prev'   ?'selected':''}>Previous FY (${prevFYStart}-${String(prevFYStart+1).slice(2)})</option>
+    <option value="lastmonth" ${_fyYear==='lastmonth'?'selected':''}>Audit Info (${lastMonthLabel})</option>
+    <option value="current"   ${_fyYear==='current'  ?'selected':''}>This FY</option>
+    <option value="prev"      ${_fyYear==='prev'     ?'selected':''}>Previous FY (${prevFYStart}-${String(prevFYStart+1).slice(2)})</option>
     ${fyYears.map(y => `<option value="${y}" ${_fyYear==y?'selected':''}>${y}-${String(y+1).slice(2)}</option>`).join('')}
-    <option value="all" ${_fyYear==='all'?'selected':''}>All Years</option>`;
+    <option value="all"       ${_fyYear==='all'      ?'selected':''}>All Years</option>`;
 
   const content = document.getElementById('content');
   content.innerHTML = `
