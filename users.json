@@ -1,14 +1,26 @@
 [
   {
-    "id": "mo1j6hv8weg",
+    "id": "mo1jv067w9f",
     "username": "nmrmanohar",
     "displayName": "Manohar Reddy N",
     "passwordHash": {
-      "salt": "+R6eID52hbg21v7eyqIIHA==",
-      "iv": "pLnedBPYEYIQoJ/3",
-      "tag": "ufJy33JmfjoihM5gvMc5pPh91G7hNA6yZK573llrEw=="
+      "salt": "Hr6R/XN13KsgllgTEsBj1Q==",
+      "iv": "RkgkVuBp1w4uBZVD",
+      "tag": "Xr/1uI0YxxDm6Ka8H1LfV4I8gIv/fen7mXljFheLbA=="
     },
     "role": "admin",
+    "active": true
+  },
+  {
+    "id": "mo1jzt5m9bi",
+    "username": "deviprasad",
+    "displayName": "Devi Prasad",
+    "passwordHash": {
+      "salt": "hdjn93BYlZt/hQFnmm5U/Q==",
+      "iv": "/qWhi+NParsWwKfS",
+      "tag": "XQ8RFEnP1T708GOujSfRSfpLZsy3Eb0mqZKmiuI/1w=="
+    },
+    "role": "viewer",
     "active": true
   }
 ]
