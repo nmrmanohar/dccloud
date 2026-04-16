@@ -75,14 +75,17 @@ async function route() {
 
   try {
     if (entity === 'trainings') {
+      if (action === 'new' && !auth.canWrite) { navigate('trainings'); return; }
       if (action === 'new')       await showTrainingForm(null);
       else if (action === 'edit') await showTrainingForm(id);
       else                        await showTrainingsList();
     } else if (entity === 'vendors') {
+      if (action === 'new' && !auth.canWrite) { navigate('vendors'); return; }
       if (action === 'new')       await showVendorForm(null);
       else if (action === 'edit') await showVendorForm(id);
       else                        await showVendorsList();
     } else if (entity === 'trainers') {
+      if (action === 'new' && !auth.canWrite) { navigate('trainers'); return; }
       if (action === 'new')       await showTrainerForm(null);
       else if (action === 'edit') await showTrainerForm(id);
       else                        await showTrainersList();
@@ -353,9 +356,11 @@ async function showTrainingForm(id) {
         <span class="record-title">${isNew ? 'New Training' : esc(rec.invoice_number)}</span>
         ${isNew ? '' : '<span style="color:#999;font-size:12px">– Saved</span>'}
       </div>
-      <button class="btn btn-primary" onclick="saveTraining('${rec.id}',${isNew})">💾 Save</button>
-      <button class="btn btn-primary" onclick="saveAndClose('${rec.id}',${isNew})">Save &amp; Close</button>
-      ${isNew ? '' : `<button class="btn btn-danger" onclick="deleteTraining('${rec.id}')">🗑 Delete</button>`}
+      ${auth.canWrite ? `
+        <button class="btn btn-primary" onclick="saveTraining('${rec.id}',${isNew})">💾 Save</button>
+        <button class="btn btn-primary" onclick="saveAndClose('${rec.id}',${isNew})">Save &amp; Close</button>
+        ${isNew ? '' : `<button class="btn btn-danger" onclick="deleteTraining('${rec.id}')">🗑 Delete</button>`}
+      ` : `<span class="readonly-badge">🔒 Read-only</span>`}
     </div>
 
     <div class="form-meta-bar">
@@ -494,6 +499,8 @@ async function showTrainingForm(id) {
 
   // expose hidden raw numeric values via dataset
   document.getElementById('formBody').dataset.recId = rec.id;
+  // Apply read-only mode for viewers
+  if (!auth.canWrite) document.getElementById('formBody').classList.add('readonly');
 }
 
 // Live calc when any relevant field changes
@@ -688,9 +695,11 @@ async function showVendorForm(id) {
         <span class="form-breadcrumb">/</span>
         <span class="record-title">${isNew ? 'New Account' : esc(rec.account_name)}</span>
       </div>
-      <button class="btn btn-primary" onclick="saveVendor('${rec.id}',${isNew})">💾 Save</button>
-      <button class="btn btn-primary" onclick="saveVendorClose('${rec.id}',${isNew})">Save &amp; Close</button>
-      ${isNew ? '' : `<button class="btn btn-danger" onclick="deleteVendor('${rec.id}')">🗑 Delete</button>`}
+      ${auth.canWrite ? `
+        <button class="btn btn-primary" onclick="saveVendor('${rec.id}',${isNew})">💾 Save</button>
+        <button class="btn btn-primary" onclick="saveVendorClose('${rec.id}',${isNew})">Save &amp; Close</button>
+        ${isNew ? '' : `<button class="btn btn-danger" onclick="deleteVendor('${rec.id}')">🗑 Delete</button>`}
+      ` : `<span class="readonly-badge">🔒 Read-only</span>`}
     </div>
     <div class="form-body two-col" style="padding:14px 16px">
 
@@ -722,6 +731,7 @@ async function showVendorForm(id) {
       </div>
 
     </div>`;
+  if (!auth.canWrite) document.querySelector('#content .form-body')?.classList.add('readonly');
 }
 
 function gatherVendor(id) {
@@ -830,9 +840,11 @@ async function showTrainerForm(id) {
         <span class="form-breadcrumb">/</span>
         <span class="record-title">${isNew ? 'New Trainer' : esc(rec.first_name + ' ' + rec.last_name)}</span>
       </div>
-      <button class="btn btn-primary" onclick="saveTrainer('${rec.id}',${isNew})">💾 Save</button>
-      <button class="btn btn-primary" onclick="saveTrainerClose('${rec.id}',${isNew})">Save &amp; Close</button>
-      ${isNew ? '' : `<button class="btn btn-danger" onclick="deleteTrainer('${rec.id}')">🗑 Delete</button>`}
+      ${auth.canWrite ? `
+        <button class="btn btn-primary" onclick="saveTrainer('${rec.id}',${isNew})">💾 Save</button>
+        <button class="btn btn-primary" onclick="saveTrainerClose('${rec.id}',${isNew})">Save &amp; Close</button>
+        ${isNew ? '' : `<button class="btn btn-danger" onclick="deleteTrainer('${rec.id}')">🗑 Delete</button>`}
+      ` : `<span class="readonly-badge">🔒 Read-only</span>`}
     </div>
     <div class="form-body two-col" style="padding:14px 16px">
 
@@ -867,6 +879,7 @@ async function showTrainerForm(id) {
       </div>
 
     </div>`;
+  if (!auth.canWrite) document.querySelector('#content .form-body')?.classList.add('readonly');
 }
 
 function gatherTrainer(id) {
