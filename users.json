@@ -1,1 +1,14 @@
-[]
+[
+  {
+    "id": "mo1j6hv8weg",
+    "username": "nmrmanohar",
+    "displayName": "Manohar Reddy N",
+    "passwordHash": {
+      "salt": "+R6eID52hbg21v7eyqIIHA==",
+      "iv": "pLnedBPYEYIQoJ/3",
+      "tag": "ufJy33JmfjoihM5gvMc5pPh91G7hNA6yZK573llrEw=="
+    },
+    "role": "admin",
+    "active": true
+  }
+]
