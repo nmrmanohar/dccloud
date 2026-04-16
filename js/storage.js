@@ -1,20 +1,25 @@
 /**
  * storage.js – GitHub API wrapper
  *
- * Token priority (highest → lowest):
- *   1. auth.token  (from active user session — set after login)
- *   2. this.settings.token  (legacy fallback, kept for Settings page first-time setup)
+ * Architecture:
+ *   config.json  (public app repo, committed to git)
+ *     → dataOwner, dataRepo, readToken
+ *     → fetched via GitHub Pages URL — always available, no auth needed
  *
- * config.json (in the public app repo) holds:
- *   { dataOwner, dataRepo, readToken, users[] }
+ *   data/users.json  (private data repo)
+ *     → users array with hashed passwords & encrypted tokens
+ *     → fetched with readToken (viewers) or write token (admin/editor)
+ *     → kept in private repo so the write token that already works there
+ *       is the only token needed — no PAT for the public app repo required
  *
- * config.json is fetched on every load so the app works in any browser
- * without per-browser PAT entry.
+ *   data/trainings.json, vendors.json, trainers.json  (private data repo)
+ *     → training records
  */
 class GitHubStorage {
   constructor() {
-    this.settings    = this._load();
+    this.settings      = this._load();
     this._remoteConfig = null;
+    this._users        = null;
   }
 
   _load() {
@@ -22,27 +27,54 @@ class GitHubStorage {
     catch { return {}; }
   }
 
-  /** Persist connection settings (used only during first-time setup) */
+  /** Persist connection settings (used during first-time setup) */
   saveSettings(s) {
     localStorage.setItem('dccloud_cfg', JSON.stringify(s));
     this.settings = s;
   }
 
-  // ── Remote config (config.json in the public app repo) ───────────────
+  // ── Remote config (config.json served by GitHub Pages) ───────────────
   async loadRemoteConfig() {
     try {
       const base = location.origin + location.pathname.replace(/\/[^/]*$/, '/');
       const resp = await fetch(`${base}config.json?t=${Date.now()}`);
       if (!resp.ok) return;
       this._remoteConfig = await resp.json();
-      // Pre-fill local settings from config so the API URLs are correct
       if (this._remoteConfig.dataOwner) this.settings.dataOwner = this._remoteConfig.dataOwner;
       if (this._remoteConfig.dataRepo)  this.settings.dataRepo  = this._remoteConfig.dataRepo;
-    } catch { /* config.json not yet created — first-time setup */ }
+    } catch { /* config.json missing — first-time setup */ }
+  }
+
+  /** Load users from data/users.json in the private data repo */
+  async loadConfigUsers() {
+    this._users = [];
+    if (!this.settings.dataOwner || !this.settings.dataRepo) return;
+    // Use readToken (for viewers), or the setup/session token
+    const token = this.readToken || this.settings.token;
+    if (!token) return;
+    try {
+      const resp = await fetch(this._url('data/users.json'), {
+        headers: {
+          'Authorization': `token ${token}`,
+          'Accept': 'application/vnd.github.v3+json'
+        }
+      });
+      if (!resp.ok) return; // 404 = first-time setup, no users yet
+      const file = await resp.json();
+      this._users = this._decode(file.content);
+    } catch { /* network error or invalid token */ }
+  }
+
+  /** Save users to data/users.json in the private data repo */
+  async saveUsers(users) {
+    const path = 'data/users.json';
+    const existing = await this._get(path);
+    await this._put(path, users, existing?.sha || null, 'Update users');
+    this._users = [...users];
   }
 
   get remoteConfig() { return this._remoteConfig || {}; }
-  get configUsers()  { return this._remoteConfig?.users  || []; }
+  get configUsers()  { return this._users || []; }
   get readToken()    { return this._remoteConfig?.readToken || null; }
 
   get isConfigured() {
@@ -117,7 +149,7 @@ class GitHubStorage {
   }
 
   async initialize() {
-    for (const entity of ['trainings', 'vendors', 'trainers']) {
+    for (const entity of ['trainings', 'vendors', 'trainers', 'users']) {
       const path = `data/${entity}.json`;
       const existing = await this._get(path);
       if (!existing) await this._put(path, [], null, `Initialize ${entity}`);
@@ -131,8 +163,11 @@ class GitHubStorage {
   }
 
   // ── Save config.json to the public app repo ───────────────────────────
-  /** Writes config.json to nmrmanohar/dccloud (the Pages repo) */
+  /** Writes connection config to nmrmanohar/dccloud (the Pages repo).
+   *  Users are NOT stored here — they live in data/users.json. */
   async saveRemoteConfig(cfg) {
+    // Strip users if accidentally included — they belong in data/users.json
+    const { users: _u, ...configOnly } = cfg;
     const owner = this.settings.dataOwner || 'nmrmanohar';
     const url   = `https://api.github.com/repos/${owner}/dccloud/contents/config.json`;
     const hdrs  = { 'Authorization': `token ${this._token()}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' };
@@ -142,7 +177,7 @@ class GitHubStorage {
       method: 'PUT', headers: hdrs,
       body: JSON.stringify({
         message: 'Update app config',
-        content: this._encode(cfg),
+        content: this._encode(configOnly),
         ...(sha ? { sha } : {})
       })
     });
@@ -150,7 +185,7 @@ class GitHubStorage {
       const e = await put.json().catch(() => ({}));
       throw new Error(e.message || `HTTP ${put.status}`);
     }
-    this._remoteConfig = cfg;
+    this._remoteConfig = configOnly;
   }
 }
 

@@ -1526,11 +1526,13 @@ window.setupNext = async function() {
     status.textContent = 'Creating admin account…';
     try {
       const user = await auth.createUser(username, displayName || username, password, 'admin', _setupToken);
-      const cfg  = { dataOwner: storage.settings.dataOwner, dataRepo: storage.settings.dataRepo, readToken: null, users: [user] };
-      status.textContent = 'Saving configuration…';
-      await storage.saveRemoteConfig(cfg);
       status.textContent = 'Initializing data files…';
-      await storage.initialize();
+      await storage.initialize(); // creates data/users.json among others
+      status.textContent = 'Saving admin account…';
+      await storage.saveUsers([user]);
+      status.textContent = 'Saving configuration…';
+      const cfg = { dataOwner: storage.settings.dataOwner, dataRepo: storage.settings.dataRepo, readToken: null };
+      try { await storage.saveRemoteConfig(cfg); } catch { /* config.json update optional — data repo is source of truth */ }
       status.innerHTML = '<span style="color:green">✓ Setup complete! Signing you in…</span>';
       await auth.login(username, password, [user], null, true);
       setTimeout(() => route(), 900);
@@ -1629,8 +1631,7 @@ async function handleAddUser(confirmed) {
 
   try {
     const newUser = await auth.createUser(username, displayName || username, password, role, writeToken || null);
-    const cfg = { ...storage.remoteConfig, users: [...users, newUser] };
-    await storage.saveRemoteConfig(cfg);
+    await storage.saveUsers([...users, newUser]);
     toast(`User "${username}" created`, 'success');
     showUserManagement();
   } catch (e) { toast(e.message, 'error'); }
@@ -1692,8 +1693,7 @@ async function handleEditUser(confirmed, userId) {
     // as re-encryption requires the plaintext password. Use password reset for token rotation.
 
     users[idx] = user;
-    const cfg = { ...storage.remoteConfig, users };
-    await storage.saveRemoteConfig(cfg);
+    await storage.saveUsers(users);
     toast('User updated', 'success');
     showUserManagement();
   } catch (e) { toast(e.message, 'error'); }
@@ -1705,8 +1705,7 @@ window.toggleUserActive = async function(userId) {
     const idx   = users.findIndex(u => u.id === userId);
     if (idx < 0) return;
     users[idx] = { ...users[idx], active: !(users[idx].active !== false) };
-    const cfg = { ...storage.remoteConfig, users };
-    await storage.saveRemoteConfig(cfg);
+    await storage.saveUsers(users);
     toast('User updated', 'success');
     showUserManagement();
   } catch (e) { toast(e.message, 'error'); }
@@ -1740,8 +1739,7 @@ window.doChangePassword = async function() {
     await auth.changePassword(user, newPw, writeToken);
     users[userIdx] = user;
 
-    const cfg = { ...storage.remoteConfig, users };
-    await storage.saveRemoteConfig(cfg);
+    await storage.saveUsers(users);
     status.innerHTML = '<span style="color:green">✓ Password changed successfully. Signing out to refresh session…</span>';
     setTimeout(() => doLogout(), 1800);
   } catch (e) {
@@ -1753,6 +1751,7 @@ window.doChangePassword = async function() {
 // INIT
 // ═══════════════════════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', async () => {
-  await storage.loadRemoteConfig();
+  await storage.loadRemoteConfig();    // fetch config.json → get dataOwner/dataRepo/readToken
+  await storage.loadConfigUsers();     // fetch data/users.json → get users list
   route();
 });
