@@ -1434,19 +1434,11 @@ function showFirstTimeSetup() {
         </div>
 
         <div id="setup-step-1" class="auth-body">
-          <p class="setup-info">Connect to the GitHub repository where training data will be stored. Your token is only entered once and stored encrypted — users will never need to enter a PAT.</p>
+          <p class="setup-info">Enter your GitHub Personal Access Token to connect to the data repository. This is a one-time step — all other users will log in with just a username and password.</p>
           <div class="form-group">
             <label>GitHub Personal Access Token (repo scope)</label>
             <input type="password" id="su-token" autocomplete="off" placeholder="ghp_…" />
-            <div class="field-hint">Needs repo (read/write) scope. Will be encrypted with your password.</div>
-          </div>
-          <div class="form-group">
-            <label>Data Repository Owner</label>
-            <input type="text" id="su-owner" value="${esc(storage.settings.dataOwner || '')}" placeholder="github-username" />
-          </div>
-          <div class="form-group">
-            <label>Data Repository Name</label>
-            <input type="text" id="su-repo" value="${esc(storage.settings.dataRepo || '')}" placeholder="dccloud-data" />
+            <div class="field-hint">Needs repo (read/write) scope for <strong>nmrmanohar/dccloud-data</strong>. Will be encrypted with your password — never stored in plain text.</div>
           </div>
           <div id="su-status1" style="min-height:20px;font-size:13px;margin-top:4px"></div>
         </div>
@@ -1487,11 +1479,11 @@ window.setupNext = async function() {
 
   if (_setupStep === 1) {
     const token  = document.getElementById('su-token').value.trim();
-    const owner  = document.getElementById('su-owner').value.trim();
-    const repo   = document.getElementById('su-repo').value.trim();
+    const owner  = storage.settings.dataOwner || 'nmrmanohar';
+    const repo   = storage.settings.dataRepo  || 'dccloud-data';
     const status = document.getElementById('su-status1');
-    if (!token || !owner || !repo) {
-      status.innerHTML = '<span style="color:red">All fields are required.</span>'; return;
+    if (!token) {
+      status.innerHTML = '<span style="color:red">Please enter your GitHub Personal Access Token.</span>'; return;
     }
     btn.disabled = true; btn.textContent = 'Testing connection…';
     status.textContent = 'Connecting to GitHub…';
@@ -1530,9 +1522,7 @@ window.setupNext = async function() {
       await storage.initialize(); // creates data/users.json among others
       status.textContent = 'Saving admin account…';
       await storage.saveUsers([user]);
-      status.textContent = 'Saving configuration…';
-      const cfg = { dataOwner: storage.settings.dataOwner, dataRepo: storage.settings.dataRepo, readToken: null };
-      try { await storage.saveRemoteConfig(cfg); } catch { /* config.json update optional — data repo is source of truth */ }
+      // config.json is pre-configured in git — no need to update it
       status.innerHTML = '<span style="color:green">✓ Setup complete! Signing you in…</span>';
       await auth.login(username, password, [user], null, true);
       setTimeout(() => route(), 900);
