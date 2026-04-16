@@ -10,5 +10,17 @@
     },
     "role": "admin",
     "active": true
+  },
+  {
+    "id": "mo1k8952pxh",
+    "username": "deviprasad",
+    "displayName": "Devi Prasad",
+    "passwordHash": {
+      "salt": "nYyIS/ZJ06A+I6zg6JmSRg==",
+      "iv": "lLuNkmgi2TY3987x",
+      "tag": "6inpE3hvu05w7xvOCoMA0z47M7L7h9HJJLHtd9vjLQ=="
+    },
+    "role": "viewer",
+    "active": true
   }
 ]
