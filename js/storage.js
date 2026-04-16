@@ -61,11 +61,11 @@ class GitHubStorage {
     const owner = this.settings.dataOwner || 'nmrmanohar';
     const url   = `https://api.github.com/repos/${owner}/dccloud/contents/users.json`;
     const hdrs  = { 'Authorization': `token ${this._token()}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' };
-    const get   = await fetch(url, { headers: hdrs });
+    const get   = await fetch(`${url}?ref=main`, { headers: hdrs });
     const sha   = get.ok ? (await get.json()).sha : null;
     const put   = await fetch(url, {
       method: 'PUT', headers: hdrs,
-      body: JSON.stringify({ message: 'Update users', content: this._encode(users), ...(sha ? { sha } : {}) })
+      body: JSON.stringify({ message: 'Update users', branch: 'main', content: this._encode(users), ...(sha ? { sha } : {}) })
     });
     if (!put.ok) {
       const e = await put.json().catch(() => ({}));
@@ -184,11 +184,11 @@ class GitHubStorage {
     const owner = this.settings.dataOwner || 'nmrmanohar';
     const url   = `https://api.github.com/repos/${owner}/dccloud/contents/config.json`;
     const hdrs  = { 'Authorization': `token ${this._token()}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' };
-    const get   = await fetch(url, { headers: hdrs });
+    const get   = await fetch(`${url}?ref=main`, { headers: hdrs });
     const sha   = get.ok ? (await get.json()).sha : null;
     const put   = await fetch(url, {
       method: 'PUT', headers: hdrs,
-      body: JSON.stringify({ message: 'Update app config', content: this._encode(cfg), ...(sha ? { sha } : {}) })
+      body: JSON.stringify({ message: 'Update app config', branch: 'main', content: this._encode(cfg), ...(sha ? { sha } : {}) })
     });
     if (!put.ok) {
       const e = await put.json().catch(() => ({}));
