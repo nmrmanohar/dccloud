@@ -45,32 +45,59 @@ class GitHubStorage {
     } catch { /* config.json missing — first-time setup */ }
   }
 
-  /** Load users from data/users.json in the private data repo */
+  /** Load users — tries Pages URL first (no auth), falls back to private repo */
   async loadConfigUsers() {
     this._users = [];
+    // 1. Try GitHub Pages URL — no auth needed, works in any browser
+    try {
+      const base = location.origin + location.pathname.replace(/\/[^/]*$/, '/');
+      const resp = await fetch(`${base}users.json?t=${Date.now()}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (Array.isArray(data) && data.length > 0) {
+          this._users = data;
+          return;
+        }
+      }
+    } catch { }
+    // 2. Fall back to private data repo (requires token — logged-in session or localStorage)
     if (!this.settings.dataOwner || !this.settings.dataRepo) return;
-    // Use readToken (for viewers), or the setup/session token
     const token = this.readToken || this.settings.token;
     if (!token) return;
     try {
       const resp = await fetch(this._url('data/users.json'), {
-        headers: {
-          'Authorization': `token ${token}`,
-          'Accept': 'application/vnd.github.v3+json'
-        }
+        headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
       });
-      if (!resp.ok) return; // 404 = first-time setup, no users yet
+      if (!resp.ok) return;
       const file = await resp.json();
       this._users = this._decode(file.content);
-    } catch { /* network error or invalid token */ }
+    } catch { }
   }
 
-  /** Save users to data/users.json in the private data repo */
+  /** Save users to private data repo AND to public app repo (served via Pages) */
   async saveUsers(users) {
+    // Primary: private data repo
     const path = 'data/users.json';
     const existing = await this._get(path);
     await this._put(path, users, existing?.sha || null, 'Update users');
     this._users = [...users];
+    // Secondary: public app repo — makes users.json available via Pages without auth
+    await this._saveUsersToAppRepo(users);
+  }
+
+  /** Write users.json to the public app repo (nmrmanohar/dccloud) */
+  async _saveUsersToAppRepo(users) {
+    try {
+      const owner = this.settings.dataOwner || 'nmrmanohar';
+      const url   = `https://api.github.com/repos/${owner}/dccloud/contents/users.json`;
+      const hdrs  = { 'Authorization': `token ${this._token()}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' };
+      const get   = await fetch(url, { headers: hdrs });
+      const sha   = get.ok ? (await get.json()).sha : null;
+      await fetch(url, {
+        method: 'PUT', headers: hdrs,
+        body: JSON.stringify({ message: 'Update users', content: this._encode(users), ...(sha ? { sha } : {}) })
+      });
+    } catch { /* non-fatal — private repo is the source of truth */ }
   }
 
   get remoteConfig() { return this._remoteConfig || {}; }
