@@ -1403,7 +1403,7 @@ window.doLogin = async function() {
   btn.disabled = true; btn.textContent = 'Signing in…';
 
   try {
-    await auth.login(username, password, storage.configUsers, storage.readToken, remember);
+    await auth.login(username, password, storage.configUsers, remember);
     route();
   } catch (e) {
     errEl.textContent = e.message;
@@ -1517,14 +1517,16 @@ window.setupNext = async function() {
     btn.disabled = true; btn.textContent = 'Setting up…';
     status.textContent = 'Creating admin account…';
     try {
-      const user = await auth.createUser(username, displayName || username, password, 'admin', _setupToken);
+      const user = await auth.createUser(username, displayName || username, password, 'admin');
+      status.textContent = 'Saving service token to config…';
+      const cfg = { dataOwner: storage.settings.dataOwner, dataRepo: storage.settings.dataRepo, serviceToken: _setupToken };
+      await storage.saveRemoteConfig(cfg);
       status.textContent = 'Initializing data files…';
-      await storage.initialize(); // creates data/users.json among others
+      await storage.initialize();
       status.textContent = 'Saving admin account…';
       await storage.saveUsers([user]);
-      // config.json is pre-configured in git — no need to update it
       status.innerHTML = '<span style="color:green">✓ Setup complete! Signing you in…</span>';
-      await auth.login(username, password, [user], null, true);
+      await auth.login(username, password, [user], true);
       setTimeout(() => route(), 900);
     } catch (e) {
       status.innerHTML = `<span style="color:red">✗ ${esc(e.message)}</span>`;
@@ -1573,28 +1575,17 @@ window.showAddUserModal = function() {
     <div class="form-group"><label>Username</label><input type="text" id="mu-username" /></div>
     <div class="form-group"><label>Display Name</label><input type="text" id="mu-displayname" /></div>
     <div class="form-group"><label>Role</label>
-      <select id="mu-role" onchange="onNewUserRoleChange()">
+      <select id="mu-role">
         <option value="viewer">Viewer — read-only, export</option>
         <option value="editor">Editor — create &amp; edit</option>
         <option value="admin">Admin — full access + user mgmt</option>
       </select></div>
     <div class="form-group"><label>Password (min 8 characters)</label><input type="password" id="mu-password" autocomplete="new-password" /></div>
-    <div class="form-group"><label>Confirm Password</label><input type="password" id="mu-confirm" autocomplete="new-password" /></div>
-    <div id="mu-token-grp" class="form-group" style="display:none">
-      <label>Write Token (GitHub PAT)</label>
-      <input type="password" id="mu-token" placeholder="ghp_… — required for admin / editor" />
-      <div class="field-hint">Token will be encrypted with the user's password and stored in config.json.</div>
-    </div>`;
+    <div class="form-group"><label>Confirm Password</label><input type="password" id="mu-confirm" autocomplete="new-password" /></div>`;
   document.getElementById('modalConfirm').textContent = 'Create User';
   document.getElementById('modalOverlay').style.display = 'flex';
   _modalResolve = handleAddUser;
   setTimeout(() => document.getElementById('mu-username')?.focus(), 50);
-};
-
-window.onNewUserRoleChange = function() {
-  const role = document.getElementById('mu-role')?.value;
-  const grp  = document.getElementById('mu-token-grp');
-  if (grp) grp.style.display = (role === 'viewer') ? 'none' : 'block';
 };
 
 async function handleAddUser(confirmed) {
@@ -1607,12 +1598,10 @@ async function handleAddUser(confirmed) {
   const role        = document.getElementById('mu-role')?.value;
   const password    = document.getElementById('mu-password')?.value;
   const confirm     = document.getElementById('mu-confirm')?.value;
-  const writeToken  = document.getElementById('mu-token')?.value?.trim();
 
   if (!username || !password) { toast('Username and password are required', 'error'); return; }
   if (password !== confirm)   { toast('Passwords do not match', 'error'); return; }
   if (password.length < 8)    { toast('Password must be at least 8 characters', 'error'); return; }
-  if (role !== 'viewer' && !writeToken) { toast('Write token is required for admin/editor roles', 'error'); return; }
 
   const users = storage.configUsers;
   if (users.find(u => u.username.toLowerCase() === username.toLowerCase())) {
@@ -1620,7 +1609,7 @@ async function handleAddUser(confirmed) {
   }
 
   try {
-    const newUser = await auth.createUser(username, displayName || username, password, role, writeToken || null);
+    const newUser = await auth.createUser(username, displayName || username, password, role);
     await storage.saveUsers([...users, newUser]);
     toast(`User "${username}" created`, 'success');
     showUserManagement();
@@ -1643,12 +1632,7 @@ window.showEditUserModal = function(userId) {
     <hr style="margin:14px 0;border:none;border-top:1px solid #eee"/>
     <p style="font-size:13px;color:#666;margin:0 0 10px">Reset password (leave blank to keep current):</p>
     <div class="form-group"><label>New Password</label><input type="password" id="eu-password" autocomplete="new-password" /></div>
-    <div class="form-group"><label>Confirm Password</label><input type="password" id="eu-confirm" autocomplete="new-password" /></div>
-    <div class="form-group">
-      <label>Write Token (leave blank to keep current)</label>
-      <input type="password" id="eu-token" placeholder="ghp_… — only needed if changing role or token" />
-      <div class="field-hint">Only required if changing to admin/editor or if you want to update the stored token.</div>
-    </div>`;
+    <div class="form-group"><label>Confirm Password</label><input type="password" id="eu-confirm" autocomplete="new-password" /></div>`;
   document.getElementById('modalConfirm').textContent = 'Save';
   document.getElementById('modalOverlay').style.display = 'flex';
   _modalResolve = (ok) => handleEditUser(ok, userId);
@@ -1659,10 +1643,9 @@ async function handleEditUser(confirmed, userId) {
   document.getElementById('modalConfirm').textContent = 'Confirm';
   if (!confirmed) return;
 
-  const newRole    = document.getElementById('eu-role')?.value;
-  const newPw      = document.getElementById('eu-password')?.value;
-  const confirm    = document.getElementById('eu-confirm')?.value;
-  const writeToken = document.getElementById('eu-token')?.value?.trim();
+  const newRole = document.getElementById('eu-role')?.value;
+  const newPw   = document.getElementById('eu-password')?.value;
+  const confirm = document.getElementById('eu-confirm')?.value;
 
   if (newPw && newPw !== confirm) { toast('Passwords do not match', 'error'); return; }
   if (newPw && newPw.length < 8)  { toast('Password must be at least 8 characters', 'error'); return; }
@@ -1673,15 +1656,7 @@ async function handleEditUser(confirmed, userId) {
     if (idx < 0) { toast('User not found', 'error'); return; }
 
     const user = { ...users[idx], role: newRole };
-
-    if (newPw) {
-      // Re-encrypt token with new password; use provided write token or session token
-      const token = writeToken || (newRole !== 'viewer' ? auth.token : null);
-      await auth.changePassword(user, newPw, token);
-    }
-    // Note: updating the write token alone (without changing password) is not supported,
-    // as re-encryption requires the plaintext password. Use password reset for token rotation.
-
+    if (newPw) await auth.changePassword(user, newPw);
     users[idx] = user;
     await storage.saveUsers(users);
     toast('User updated', 'success');
@@ -1725,8 +1700,7 @@ window.doChangePassword = async function() {
     if (!ok) { status.innerHTML = '<span style="color:red">Current password is incorrect.</span>'; return; }
 
     status.textContent = 'Updating password…';
-    const writeToken = auth.token; // decrypt & re-encrypt with new password
-    await auth.changePassword(user, newPw, writeToken);
+    await auth.changePassword(user, newPw);
     users[userIdx] = user;
 
     await storage.saveUsers(users);

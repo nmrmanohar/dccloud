@@ -2,18 +2,16 @@
  * storage.js – GitHub API wrapper
  *
  * Architecture:
- *   config.json  (public app repo, committed to git)
- *     → dataOwner, dataRepo, readToken
- *     → fetched via GitHub Pages URL — always available, no auth needed
+ *   config.json  (public app repo, git-tracked, served via GitHub Pages)
+ *     → dataOwner, dataRepo, serviceToken
+ *     → serviceToken is the shared GitHub PAT used for ALL data operations
  *
- *   data/users.json  (private data repo)
- *     → users array with hashed passwords & encrypted tokens
- *     → fetched with readToken (viewers) or write token (admin/editor)
- *     → kept in private repo so the write token that already works there
- *       is the only token needed — no PAT for the public app repo required
+ *   users.json  (public app repo, served via GitHub Pages — no auth needed)
+ *     → users array with hashed passwords and roles
+ *     → fetched without any token so every browser gets the login page
  *
- *   data/trainings.json, vendors.json, trainers.json  (private data repo)
- *     → training records
+ *   data/*.json  (private data repo, accessed with serviceToken)
+ *     → training records, vendors, trainers
  */
 class GitHubStorage {
   constructor() {
@@ -27,91 +25,67 @@ class GitHubStorage {
     catch { return {}; }
   }
 
-  /** Persist connection settings (used during first-time setup) */
   saveSettings(s) {
     localStorage.setItem('dccloud_cfg', JSON.stringify(s));
     this.settings = s;
   }
 
-  // ── Remote config (config.json served by GitHub Pages) ───────────────
+  // ── Remote config ─────────────────────────────────────────────────────
   async loadRemoteConfig() {
     try {
       const base = location.origin + location.pathname.replace(/\/[^/]*$/, '/');
       const resp = await fetch(`${base}config.json?t=${Date.now()}`);
       if (!resp.ok) return;
       this._remoteConfig = await resp.json();
-      if (this._remoteConfig.dataOwner) this.settings.dataOwner = this._remoteConfig.dataOwner;
-      if (this._remoteConfig.dataRepo)  this.settings.dataRepo  = this._remoteConfig.dataRepo;
-    } catch { /* config.json missing — first-time setup */ }
+      if (this._remoteConfig.dataOwner)    this.settings.dataOwner    = this._remoteConfig.dataOwner;
+      if (this._remoteConfig.dataRepo)     this.settings.dataRepo     = this._remoteConfig.dataRepo;
+      if (this._remoteConfig.serviceToken) this.settings.serviceToken = this._remoteConfig.serviceToken;
+    } catch { }
   }
 
-  /** Load users — tries Pages URL first (no auth), falls back to private repo */
+  /** Load users from users.json served by GitHub Pages — no auth needed */
   async loadConfigUsers() {
     this._users = [];
-    // 1. Try GitHub Pages URL — no auth needed, works in any browser
     try {
       const base = location.origin + location.pathname.replace(/\/[^/]*$/, '/');
       const resp = await fetch(`${base}users.json?t=${Date.now()}`);
       if (resp.ok) {
         const data = await resp.json();
-        if (Array.isArray(data) && data.length > 0) {
-          this._users = data;
-          return;
-        }
+        if (Array.isArray(data)) { this._users = data; return; }
       }
     } catch { }
-    // 2. Fall back to private data repo (requires token — logged-in session or localStorage)
-    if (!this.settings.dataOwner || !this.settings.dataRepo) return;
-    const token = this.readToken || this.settings.token;
-    if (!token) return;
-    try {
-      const resp = await fetch(this._url('data/users.json'), {
-        headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
-      });
-      if (!resp.ok) return;
-      const file = await resp.json();
-      this._users = this._decode(file.content);
-    } catch { }
   }
 
-  /** Save users to private data repo AND to public app repo (served via Pages) */
+  /** Save users to dccloud/users.json (GitHub Pages) so every browser can load them */
   async saveUsers(users) {
-    // Primary: private data repo
-    const path = 'data/users.json';
-    const existing = await this._get(path);
-    await this._put(path, users, existing?.sha || null, 'Update users');
+    const owner = this.settings.dataOwner || 'nmrmanohar';
+    const url   = `https://api.github.com/repos/${owner}/dccloud/contents/users.json`;
+    const hdrs  = { 'Authorization': `token ${this._token()}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' };
+    const get   = await fetch(url, { headers: hdrs });
+    const sha   = get.ok ? (await get.json()).sha : null;
+    const put   = await fetch(url, {
+      method: 'PUT', headers: hdrs,
+      body: JSON.stringify({ message: 'Update users', content: this._encode(users), ...(sha ? { sha } : {}) })
+    });
+    if (!put.ok) {
+      const e = await put.json().catch(() => ({}));
+      throw new Error(e.message || `Failed to save users: HTTP ${put.status}`);
+    }
     this._users = [...users];
-    // Secondary: public app repo — makes users.json available via Pages without auth
-    await this._saveUsersToAppRepo(users);
   }
 
-  /** Write users.json to the public app repo (nmrmanohar/dccloud) */
-  async _saveUsersToAppRepo(users) {
-    try {
-      const owner = this.settings.dataOwner || 'nmrmanohar';
-      const url   = `https://api.github.com/repos/${owner}/dccloud/contents/users.json`;
-      const hdrs  = { 'Authorization': `token ${this._token()}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' };
-      const get   = await fetch(url, { headers: hdrs });
-      const sha   = get.ok ? (await get.json()).sha : null;
-      await fetch(url, {
-        method: 'PUT', headers: hdrs,
-        body: JSON.stringify({ message: 'Update users', content: this._encode(users), ...(sha ? { sha } : {}) })
-      });
-    } catch { /* non-fatal — private repo is the source of truth */ }
-  }
-
-  get remoteConfig() { return this._remoteConfig || {}; }
-  get configUsers()  { return this._users || []; }
-  get readToken()    { return this._remoteConfig?.readToken || null; }
+  get remoteConfig()   { return this._remoteConfig || {}; }
+  get configUsers()    { return this._users || []; }
+  get serviceToken()   { return this._remoteConfig?.serviceToken || this.settings.serviceToken || null; }
 
   get isConfigured() {
-    return !!(this.settings.dataOwner && this.settings.dataRepo &&
-              (auth.token || this.settings.token));
+    return !!(this.settings.dataOwner && this.settings.dataRepo && this._token());
   }
 
   // ── Internal helpers ──────────────────────────────────────────────────
+  /** All API calls use the shared serviceToken */
   _token() {
-    return auth.isLoggedIn ? auth.token : this.settings.token;
+    return this.serviceToken || this.settings.token || null;
   }
 
   _headers() {
@@ -147,11 +121,7 @@ class GitHubStorage {
   }
 
   async _put(path, data, sha, message) {
-    const body = {
-      message: message || `Update ${path}`,
-      content: this._encode(data),
-      ...(sha ? { sha } : {})
-    };
+    const body = { message: message || `Update ${path}`, content: this._encode(data), ...(sha ? { sha } : {}) };
     const resp = await fetch(this._url(path), {
       method: 'PUT', headers: this._headers(), body: JSON.stringify(body)
     });
@@ -176,7 +146,7 @@ class GitHubStorage {
   }
 
   async initialize() {
-    for (const entity of ['trainings', 'vendors', 'trainers', 'users']) {
+    for (const entity of ['trainings', 'vendors', 'trainers']) {
       const path = `data/${entity}.json`;
       const existing = await this._get(path);
       if (!existing) await this._put(path, [], null, `Initialize ${entity}`);
@@ -189,12 +159,8 @@ class GitHubStorage {
     return (await resp.json()).login;
   }
 
-  // ── Save config.json to the public app repo ───────────────────────────
-  /** Writes connection config to nmrmanohar/dccloud (the Pages repo).
-   *  Users are NOT stored here — they live in data/users.json. */
+  /** Save config.json (with serviceToken) to the public app repo */
   async saveRemoteConfig(cfg) {
-    // Strip users if accidentally included — they belong in data/users.json
-    const { users: _u, ...configOnly } = cfg;
     const owner = this.settings.dataOwner || 'nmrmanohar';
     const url   = `https://api.github.com/repos/${owner}/dccloud/contents/config.json`;
     const hdrs  = { 'Authorization': `token ${this._token()}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' };
@@ -202,17 +168,14 @@ class GitHubStorage {
     const sha   = get.ok ? (await get.json()).sha : null;
     const put   = await fetch(url, {
       method: 'PUT', headers: hdrs,
-      body: JSON.stringify({
-        message: 'Update app config',
-        content: this._encode(configOnly),
-        ...(sha ? { sha } : {})
-      })
+      body: JSON.stringify({ message: 'Update app config', content: this._encode(cfg), ...(sha ? { sha } : {}) })
     });
     if (!put.ok) {
       const e = await put.json().catch(() => ({}));
       throw new Error(e.message || `HTTP ${put.status}`);
     }
-    this._remoteConfig = configOnly;
+    this._remoteConfig = cfg;
+    if (cfg.serviceToken) this.settings.serviceToken = cfg.serviceToken;
   }
 }
 

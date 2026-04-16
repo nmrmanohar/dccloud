@@ -1,16 +1,17 @@
 /**
- * auth.js – Client-side RBAC authentication
+ * auth.js – Client-side authentication
  *
- * Passwords are hashed with PBKDF2 + AES-GCM (Web Crypto API).
- * Write tokens are AES-GCM encrypted with each user's own password —
- * they are never stored in plaintext anywhere.
+ * Simple model:
+ *   - One shared service token stored in config.json (used for all GitHub API calls)
+ *   - Users stored in users.json (served publicly via GitHub Pages)
+ *   - Passwords hashed with PBKDF2 + AES-GCM (Web Crypto API) — safe to store publicly
+ *   - No per-user token encryption needed
  *
  * Roles:
  *   admin  → full access + user management
  *   editor → create / edit records (no user management, no delete)
- *   viewer → read-only, export
+ *   viewer → read-only, export — defaults to Audit Info view
  */
-
 class Auth {
   constructor() {
     this._session = this._loadSession();
@@ -30,7 +31,6 @@ class Auth {
   _saveSession(s, remember) {
     const store = remember ? localStorage : sessionStorage;
     store.setItem('dccloud_session', JSON.stringify(s));
-    // Always clear the other store to avoid stale sessions
     if (remember) sessionStorage.removeItem('dccloud_session');
     else          localStorage.removeItem('dccloud_session');
     this._session = s;
@@ -47,7 +47,6 @@ class Auth {
   get role()        { return this._session?.role || null; }
   get canWrite()    { return this.role === 'admin' || this.role === 'editor'; }
   get isAdmin()     { return this.role === 'admin'; }
-  get token()       { return this._session?.token || null; }
   get displayName() { return this._session?.displayName || ''; }
 
   // ── Web Crypto helpers ────────────────────────────────────────────────
@@ -60,9 +59,7 @@ class Auth {
     );
     return crypto.subtle.deriveKey(
       { name: 'PBKDF2', salt: this._ub64(saltB64), iterations: 120000, hash: 'SHA-256' },
-      raw,
-      { name: 'AES-GCM', length: 256 },
-      false, ['encrypt', 'decrypt']
+      raw, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
     );
   }
 
@@ -72,9 +69,7 @@ class Auth {
     const iv   = crypto.getRandomValues(new Uint8Array(12));
     const key  = await this._deriveKey(password, salt);
     const enc  = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv },
-      key,
-      new TextEncoder().encode('dccloud-auth-v1')
+      { name: 'AES-GCM', iv }, key, new TextEncoder().encode('dccloud-auth-v1')
     );
     return { salt, iv: this._b64(iv), tag: this._b64(enc) };
   }
@@ -84,62 +79,32 @@ class Auth {
     try {
       const key = await this._deriveKey(password, hash.salt);
       const dec = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: this._ub64(hash.iv) },
-        key, this._ub64(hash.tag)
+        { name: 'AES-GCM', iv: this._ub64(hash.iv) }, key, this._ub64(hash.tag)
       );
       return new TextDecoder().decode(dec) === 'dccloud-auth-v1';
     } catch { return false; }
   }
 
-  /** Encrypt a GitHub token using the user's password (uses their salt) */
-  async encryptToken(token, password, salt) {
-    const key = await this._deriveKey(password, salt);
-    const iv  = crypto.getRandomValues(new Uint8Array(12));
-    const enc = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv }, key, new TextEncoder().encode(token)
-    );
-    return { iv: this._b64(iv), data: this._b64(enc) };
-  }
-
-  /** Decrypt a GitHub token using the user's password */
-  async decryptToken(encObj, password, salt) {
-    const key = await this._deriveKey(password, salt);
-    const dec = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: this._ub64(encObj.iv) },
-      key, this._ub64(encObj.data)
-    );
-    return new TextDecoder().decode(dec);
-  }
-
   // ── Login ─────────────────────────────────────────────────────────────
-  async login(username, password, users, readToken, remember) {
+  async login(username, password, users, remember) {
     const user = users.find(u =>
       u.username.toLowerCase() === username.toLowerCase().trim() && u.active !== false
     );
     if (!user) throw new Error('User not found or account inactive.');
-
     const ok = await this.verifyPassword(password, user.passwordHash);
     if (!ok) throw new Error('Incorrect password.');
-
-    // Resolve token: viewers use readToken; others decrypt their stored write token
-    let token = readToken || null;
-    if (user.role !== 'viewer' && user.encryptedToken) {
-      token = await this.decryptToken(user.encryptedToken, password, user.passwordHash.salt);
-    }
-
     const session = {
       userId: user.id, username: user.username,
-      displayName: user.displayName, role: user.role, token
+      displayName: user.displayName, role: user.role
     };
     this._saveSession(session, !!remember);
     return session;
   }
 
   // ── User management ───────────────────────────────────────────────────
-  /** Build a new user object ready to be pushed into config.users */
-  async createUser(username, displayName, password, role, writeToken) {
+  async createUser(username, displayName, password, role) {
     const hash = await this.hashPassword(password);
-    const user = {
+    return {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
       username: username.trim(),
       displayName: displayName.trim(),
@@ -147,21 +112,10 @@ class Auth {
       role,
       active: true
     };
-    if (role !== 'viewer' && writeToken) {
-      user.encryptedToken = await this.encryptToken(writeToken, password, hash.salt);
-    }
-    return user;
   }
 
-  /** Change a user's password (re-encrypts their write token) */
-  async changePassword(user, newPassword, writeToken) {
-    const hash = await this.hashPassword(newPassword);
-    user.passwordHash = hash;
-    if (user.role !== 'viewer' && writeToken) {
-      user.encryptedToken = await this.encryptToken(writeToken, newPassword, hash.salt);
-    } else {
-      delete user.encryptedToken;
-    }
+  async changePassword(user, newPassword) {
+    user.passwordHash = await this.hashPassword(newPassword);
     return user;
   }
 }
