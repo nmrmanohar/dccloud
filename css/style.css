@@ -1,22 +1,23 @@
 /* DC Cloud – Training Operations */
 :root {
-  --sidebar-bg:    #1e1633;
-  --sidebar-text:  #c4b5e8;
-  --sidebar-hover: rgba(255,255,255,0.1);
-  --sidebar-active:#5c2d91;
-  --topbar-bg:     #4a2080;
-  --purple:        #5c2d91;
-  --purple-dark:   #3d1f6e;
-  --purple-light:  #8b5cf6;
-  --bg:            #f4f4f7;
+  /* DC Cloud brand palette — sky blue + deep navy */
+  --sidebar-bg:    #0d1f52;
+  --sidebar-text:  #a8d1f5;
+  --sidebar-hover: rgba(41, 182, 246, 0.15);
+  --sidebar-active:#1565c0;
+  --topbar-bg:     #1434a4;
+  --purple:        #1565c0;   /* kept as --purple for compat; now brand blue */
+  --purple-dark:   #0d1f52;
+  --purple-light:  #29b6f6;
+  --bg:            #f0f4f9;
   --white:         #ffffff;
-  --border:        #e0e0e0;
-  --input-border:  #ccc;
-  --text:          #2d2d2d;
-  --text-light:    #666;
-  --success:       #28a745;
-  --danger:        #dc3545;
-  --warning:       #e6a817;
+  --border:        #dde3ed;
+  --input-border:  #c5cfe0;
+  --text:          #1a2340;
+  --text-light:    #5a6a8a;
+  --success:       #15803d;
+  --danger:        #dc2626;
+  --warning:       #d97706;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -152,7 +153,7 @@ th {
 }
 td { padding: 9px 11px; border-bottom: 1px solid var(--border); vertical-align: middle; font-size: 13px; }
 tr:last-child td { border-bottom: none; }
-tr:hover td { background: #fafafe; }
+tr:hover td { background: #f0f6ff; }
 .checkbox-col { width: 34px; }
 .amt { font-family: 'Consolas', monospace; font-size: 12px; }
 
@@ -293,7 +294,7 @@ input:disabled { background: #f5f5f8; color: var(--text-light); cursor: not-allo
 /* ── Login / Auth shell ── */
 .auth-bg {
   min-height: 100vh; display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #1e1633 0%, #3d1f6e 60%, #5c2d91 100%);
+  background: linear-gradient(135deg, #0d1f52 0%, #1434a4 60%, #1565c0 100%);
   padding: 20px;
 }
 .auth-card {
@@ -334,7 +335,7 @@ input:disabled { background: #f5f5f8; color: var(--text-light); cursor: not-allo
 .status-inactive { color: var(--danger);  font-weight: 600; font-size: 12px; }
 
 /* ── Auth extras ── */
-.logo-icon-lg { font-size: 44px; line-height: 1; }
+.logo-icon-lg { line-height: 1; display: flex; justify-content: center; }
 .auth-title   { font-size: 22px; font-weight: 700; margin: 8px 0 2px; }
 .auth-subtitle { font-size: 13px; opacity: .7; }
 .auth-error {

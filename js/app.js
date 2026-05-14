@@ -1368,12 +1368,25 @@ async function runImport(entity, rows) {
 // ═══════════════════════════════════════════════════════════════════════
 // LOGIN PAGE
 // ═══════════════════════════════════════════════════════════════════════
+const _brandSVG = (size=64) => `
+  <svg width="${size}" height="${Math.round(size*0.78)}" viewBox="0 0 36 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="cgl" x1="0" y1="0" x2="36" y2="28" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#81d4fa"/>
+        <stop offset="50%" stop-color="#29b6f6"/>
+        <stop offset="100%" stop-color="#0288d1"/>
+      </linearGradient>
+    </defs>
+    <path d="M29.5 13.2c-.5-3.8-3.7-6.7-7.6-6.7-1.6 0-3.1.5-4.3 1.4C16.3 5.8 13.7 4 10.7 4 6.2 4 2.5 7.7 2.5 12.2c0 .2 0 .5.1.7C.9 13.6 0 15.4 0 17.4 0 20.7 2.7 23.4 6 23.4h22.5c3.3 0 6-2.7 6-6 0-2.7-1.8-5-4.9-6.2h-.1z" fill="url(#cgl)"/>
+    <text x="8.5" y="19.5" fill="white" font-size="10.5" font-weight="900" font-family="Arial,sans-serif" letter-spacing="0.5">DC</text>
+  </svg>`;
+
 function showLoginPage() {
   showAuthShell(`
     <div class="auth-bg">
       <div class="auth-card">
         <div class="auth-header">
-          <div class="logo-icon-lg">☁</div>
+          <div class="logo-icon-lg">${_brandSVG(64)}</div>
           <div class="auth-title">DC Cloud</div>
           <div class="auth-subtitle">Training Operations</div>
         </div>
@@ -1436,7 +1449,7 @@ function showFirstTimeSetup() {
     <div class="auth-bg">
       <div class="auth-card setup-card">
         <div class="auth-header">
-          <div class="logo-icon-lg">☁</div>
+          <div class="logo-icon-lg">${_brandSVG(64)}</div>
           <div class="auth-title">DC Cloud Setup</div>
           <div class="auth-subtitle">One-time configuration</div>
         </div>

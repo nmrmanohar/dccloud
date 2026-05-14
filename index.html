@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>DC Cloud – Training Operations</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 28'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='36' y2='28' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0%25' stop-color='%2381d4fa'/%3E%3Cstop offset='50%25' stop-color='%2329b6f6'/%3E%3Cstop offset='100%25' stop-color='%230288d1'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M29.5 13.2c-.5-3.8-3.7-6.7-7.6-6.7-1.6 0-3.1.5-4.3 1.4C16.3 5.8 13.7 4 10.7 4 6.2 4 2.5 7.7 2.5 12.2c0 .2 0 .5.1.7C.9 13.6 0 15.4 0 17.4 0 20.7 2.7 23.4 6 23.4h22.5c3.3 0 6-2.7 6-6 0-2.7-1.8-5-4.9-6.2z' fill='url(%23g)'/%3E%3Ctext x='8.5' y='19.5' fill='white' font-size='10.5' font-weight='900' font-family='Arial'%3EDC%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="css/style.css" />
   <!-- SheetJS for Excel import -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -20,7 +21,18 @@
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
         <div class="logo">
-          <span class="logo-icon">☁</span>
+          <!-- DC Cloud brand mark -->
+          <svg width="30" height="24" viewBox="0 0 36 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="cg" x1="0" y1="0" x2="36" y2="28" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#81d4fa"/>
+                <stop offset="50%" stop-color="#29b6f6"/>
+                <stop offset="100%" stop-color="#0288d1"/>
+              </linearGradient>
+            </defs>
+            <path d="M29.5 13.2c-.5-3.8-3.7-6.7-7.6-6.7-1.6 0-3.1.5-4.3 1.4C16.3 5.8 13.7 4 10.7 4 6.2 4 2.5 7.7 2.5 12.2c0 .2 0 .5.1.7C.9 13.6 0 15.4 0 17.4 0 20.7 2.7 23.4 6 23.4h22.5c3.3 0 6-2.7 6-6 0-2.7-1.8-5-4.9-6.2h-.1z" fill="url(#cg)"/>
+            <text x="8.5" y="19.5" fill="white" font-size="10.5" font-weight="900" font-family="Arial,sans-serif" letter-spacing="0.5">DC</text>
+          </svg>
           <span class="logo-text">DC Cloud</span>
         </div>
         <div class="logo-sub">Training Operations</div>
