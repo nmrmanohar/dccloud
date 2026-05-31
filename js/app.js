@@ -588,17 +588,27 @@ function gatherTraining(id) {
   };
 }
 
+/** Check for a duplicate invoice number. Excludes the current record (by id) when editing. */
+function _duplicateInvoice(invoiceNumber, currentId) {
+  return cache.trainings.find(
+    t => t.invoice_number.trim().toLowerCase() === invoiceNumber.trim().toLowerCase()
+      && t.id !== currentId
+  );
+}
+
 window.saveTraining = async function(id, isNew) {
   const rec = gatherTraining(id);
   if (!rec.invoice_number) { toast('Invoice number is required', 'error'); return; }
   if (!rec.course_name)    { toast('Course name is required',    'error'); return; }
   try {
     await loadEntity('trainings');
+    const dup = _duplicateInvoice(rec.invoice_number, isNew ? null : id);
+    if (dup) {
+      toast(`Invoice number "${rec.invoice_number}" is already used by another record`, 'error');
+      document.getElementById('f-invoice_number')?.focus();
+      return;
+    }
     if (isNew) {
-      // Check duplicate invoice number
-      if (cache.trainings.find(t => t.invoice_number === rec.invoice_number)) {
-        toast(`Invoice ${rec.invoice_number} already exists`, 'error'); return;
-      }
       cache.trainings.push(rec);
     } else {
       const idx = cache.trainings.findIndex(t => t.id === id);
@@ -616,6 +626,12 @@ window.saveAndClose = async function(id, isNew) {
   if (!rec.course_name)    { toast('Course name is required',    'error'); return; }
   try {
     await loadEntity('trainings');
+    const dup = _duplicateInvoice(rec.invoice_number, isNew ? null : id);
+    if (dup) {
+      toast(`Invoice number "${rec.invoice_number}" is already used by another record`, 'error');
+      document.getElementById('f-invoice_number')?.focus();
+      return;
+    }
     if (isNew) {
       cache.trainings.push(rec);
     } else {
