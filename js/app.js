@@ -211,6 +211,7 @@ async function showTrainingsList() {
   const totReceived = rows.reduce((s, t) => s + (+t.received_amount  || 0), 0);
   const totGST      = rows.reduce((s, t) => s + (+t.gst_amount       || 0), 0);
   const totTrainer  = rows.reduce((s, t) => s + (+t.total_trainer_fee|| 0), 0);
+  const totMargin   = rows.reduce((s, t) => s + (+t.margin           || 0), 0);
 
   const curFYStart  = currentFYRange().start;
   const prevFYStart = curFYStart.getFullYear() - 1;
@@ -251,6 +252,7 @@ async function showTrainingsList() {
       <div class="stat-item"><div class="stat-value">${fmtINR(totReceived)}</div><div class="stat-label">Total Received</div></div>
       <div class="stat-item"><div class="stat-value">${fmtINR(totGST)}</div><div class="stat-label">Total GST</div></div>
       <div class="stat-item"><div class="stat-value">${fmtINR(totTrainer)}</div><div class="stat-label">Total Trainer Fee</div></div>
+      ${auth.isAdmin ? `<div class="stat-item stat-margin"><div class="stat-value">${fmtINR(totMargin)}</div><div class="stat-label">Total Margin</div></div>` : ''}
     </div>
 
     <div class="table-container">
@@ -260,6 +262,7 @@ async function showTrainingsList() {
           <thead><tr>
             <th class="checkbox-col"></th>
             <th>Payment Status</th>
+            ${auth.isAdmin ? `<th>Margin</th>` : ''}
             <th>Invoice No.</th>
             <th>Invoice Date</th>
             <th>Payment Due</th>
@@ -277,6 +280,7 @@ async function showTrainingsList() {
             <tr>
               <td></td>
               <td>${payBadge(t.payment_status)}</td>
+              ${auth.isAdmin ? `<td class="amt margin-cell">${fmtINR(t.margin)}</td>` : ''}
               <td><a class="link" onclick="navigate('trainings/edit/${t.id}')">${esc(t.invoice_number)}</a></td>
               <td>${fmtDate(t.invoice_date)}</td>
               <td>${fmtDate(t.payment_due_date)}</td>

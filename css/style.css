@@ -141,6 +141,10 @@ body {
 .stat-item:last-child { border-right: none; }
 .stat-value { font-size: 16px; font-weight: 700; color: var(--purple-dark); }
 .stat-label { font-size: 11px; color: var(--text-light); margin-top: 1px; }
+.stat-margin { background: #f0fdf4; }
+.stat-margin .stat-value { color: #15803d; }
+.stat-margin .stat-label { color: #166534; }
+.margin-cell { color: #15803d; font-weight: 600; }
 
 /* ── Table ── */
 .table-container { padding: 16px; overflow-x: auto; }
