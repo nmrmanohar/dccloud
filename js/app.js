@@ -211,7 +211,7 @@ async function showTrainingsList() {
   const totReceived = rows.reduce((s, t) => s + (+t.received_amount  || 0), 0);
   const totGST      = rows.reduce((s, t) => s + (+t.gst_amount       || 0), 0);
   const totTrainer  = rows.reduce((s, t) => s + (+t.total_trainer_fee|| 0), 0);
-  const totMargin   = rows.reduce((s, t) => s + (+t.margin           || 0), 0);
+  const totMargin   = rows.reduce((s, t) => s + ((+t.received_amount || 0) - (+t.gst_amount || 0)), 0);
 
   const curFYStart  = currentFYRange().start;
   const prevFYStart = curFYStart.getFullYear() - 1;
@@ -280,7 +280,7 @@ async function showTrainingsList() {
             <tr>
               <td></td>
               <td>${payBadge(t.payment_status)}</td>
-              ${auth.isAdmin ? `<td class="amt margin-cell">${fmtINR(t.margin)}</td>` : ''}
+              ${auth.isAdmin ? `<td class="amt margin-cell">${fmtINR((+t.received_amount || 0) - (+t.gst_amount || 0))}</td>` : ''}
               <td><a class="link" onclick="navigate('trainings/edit/${t.id}')">${esc(t.invoice_number)}</a></td>
               <td>${fmtDate(t.invoice_date)}</td>
               <td>${fmtDate(t.payment_due_date)}</td>
