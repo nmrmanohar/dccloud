@@ -82,8 +82,8 @@ function calcTotalTrainerFee(trainerFeePerDay, days) {
   return (parseFloat(trainerFeePerDay) || 0) * (parseFloat(days) || 1);
 }
 
-function calcMargin(received, totalTrainerFee) {
-  return (parseFloat(received) || 0) - (parseFloat(totalTrainerFee) || 0);
+function calcMargin(received, gstAmount) {
+  return (parseFloat(received) || 0) - (parseFloat(gstAmount) || 0);
 }
 
 // ── Fiscal year helpers ───────────────────────────────────────────────

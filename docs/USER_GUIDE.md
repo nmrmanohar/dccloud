@@ -96,7 +96,7 @@ Above the list, the **Stats Bar** shows totals for the current filter:
 | Received | Sum of amounts actually received |
 | GST Collected | Total GST billed |
 | Trainer Cost | Total trainer fees paid |
-| Margin | Received – Trainer Cost |
+| Margin | Received – GST Amount |
 
 #### Payment Status Badges
 
@@ -164,7 +164,7 @@ Click the **Invoice Number** (blue link) in any row to open the full record.
 | Total Trainer Fee (INR) | **Auto-calculated**: trainerFee × days |
 | Trainer Fee Paid | Yes / No / NA |
 | Trainer TDS Credited | Yes / No / NA |
-| Margin (INR) | **Auto-calculated**: receivedAmount − totalTrainerFee |
+| Margin (INR) | **Auto-calculated**: receivedAmount − gstAmount |
 
 > **Calculated fields** update in real-time as you change related inputs. You cannot type into them directly.
 

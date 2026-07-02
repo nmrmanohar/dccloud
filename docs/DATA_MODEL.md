@@ -64,7 +64,7 @@ All files are stored as **pretty-printed JSON** (2-space indent) and base64-enco
 | `total_trainer_fee` | number | — | **Calculated**: `trainer_fee_per_day × days` |
 | `trainer_fee_paid` | string | — | `Yes` / `No` / `NA` |
 | `trainer_tds_credited` | string | — | `Yes` / `No` / `NA` — TDS credit status |
-| `margin` | number | — | **Calculated**: `received_amount − total_trainer_fee` |
+| `margin` | number | — | **Calculated**: `received_amount − gst_amount` |
 
 ### Sample Record
 
@@ -327,10 +327,10 @@ total_trainer_fee = trainer_fee_per_day × days
 ### Margin (INR)
 
 ```
-margin = received_amount − total_trainer_fee
+margin = received_amount − gst_amount
 ```
 
-Note: Margin uses `received_amount` (actual payment received), not `invoice_value`. If payment is pending, margin will be negative or zero.
+Note: Margin uses `received_amount` (actual payment received), not `invoice_value`. If payment is pending, margin will be zero or negative.
 
 ---
 

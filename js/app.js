@@ -347,7 +347,7 @@ async function showTrainingForm(id) {
   const invoiceVal = calcAmountToReceive(rec.per_day_fee, rec.days, rec.currency, rec.exchange_rate, rec.gst_required);
   const gstAmt     = calcGST(rec.per_day_fee, rec.days, rec.currency, rec.gst_required);
   const trainerFee = calcTotalTrainerFee(rec.trainer_fee_per_day, rec.days);
-  const margin     = calcMargin(rec.received_amount, trainerFee);
+  const margin     = calcMargin(rec.received_amount, gstAmt);
 
   const showUSD    = rec.currency === 'USD';
   const showGSTRow = rec.gst_required === 'Yes' && rec.currency === 'INR';
@@ -520,7 +520,7 @@ window.onCalcChange = function() {
   const invVal  = calcAmountToReceive(perDay, days, currency, exchange, gstReq);
   const gstAmt  = calcGST(perDay, days, currency, gstReq);
   const totTr   = calcTotalTrainerFee(trFee, days);
-  const margin  = calcMargin(received, totTr);
+  const margin  = calcMargin(received, gstAmt);
   const showGST = gstReq === 'Yes' && currency === 'INR';
 
   document.getElementById('f-invoice_value').value           = fmtINR(invVal);
@@ -559,7 +559,7 @@ function gatherTraining(id) {
   const invoiceValue = calcAmountToReceive(perDay, days, currency, exchange, gstReq);
   const gstAmount    = calcGST(perDay, days, currency, gstReq);
   const totalTrFee   = calcTotalTrainerFee(trFee, days);
-  const margin       = calcMargin(received, totalTrFee);
+  const margin       = calcMargin(received, gstAmount);
 
   return {
     id,
